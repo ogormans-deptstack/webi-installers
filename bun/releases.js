@@ -6,15 +6,23 @@ var repo = 'bun';
 
 module.exports = function () {
   return github(null, owner, repo).then(function (all) {
+    // collect baseline asset names so we can prefer them over non-baseline
+    // (baseline builds avoid SIGILL on older/container CPUs)
+    let baselineNames = new Set();
+    all.releases.forEach(function (r) {
+      if (r.name.includes('-baseline')) {
+        baselineNames.add(r.name.replace('-baseline', ''));
+      }
+    });
+
     all.releases = all.releases
       .filter(function (r) {
-        let isDebug = r.name.includes('-profile');
-        if (isDebug) {
+        if (r.name.includes('-profile')) {
           return false;
         }
 
-        let isAncient = r.name.includes('-baseline');
-        if (isAncient) {
+        // drop the non-baseline asset when a baseline twin exists
+        if (!r.name.includes('-baseline') && baselineNames.has(r.name)) {
           return false;
         }
 
@@ -22,13 +30,15 @@ module.exports = function () {
         if (isMusl) {
           r._musl = true;
           r.libc = 'musl';
-        } else if (r.os === 'linux') {
+        } else if (r.name.includes('-linux-')) {
           r.libc = 'gnu';
         }
 
         return true;
       })
       .map(function (r) {
+        // bun-linux-x64-baseline.zip => bun-linux-x64.zip
+        r.name = r.name.replace('-baseline', '');
         // bun-v0.5.1 => v0.5.1
         r.version = r.version.replace(/bun-/g, '');
         return r;
