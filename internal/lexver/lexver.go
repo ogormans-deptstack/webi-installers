@@ -1,31 +1,36 @@
 // Package lexver makes version strings comparable and sortable.
 //
-// Version numbers like "1.20.3" look numeric but aren't — as raw strings
-// "1.2" > "1.20". Webi needs to find "the latest 1.20.x" or "the newest
-// stable release" from a list. Lexver parses version strings into a struct
-// and provides a comparison function for use with [slices.SortFunc].
+// Not all version strings are semver. Webi handles 4-part versions
+// (chromedriver 121.0.6120.0), date-based versions (atomicparsley),
+// and pre-releases with extra dots (flutter 2.3.0-16.0.pre). Lexver
+// parses these into a struct with an arbitrary-depth numeric segment
+// list and provides a comparison function for use with [slices.SortFunc].
 //
 // Pre-releases sort before their corresponding stable release:
 //
 //	1.0.0-alpha1 < 1.0.0-beta1 < 1.0.0-rc1 < 1.0.0
+//
+// When release dates are known, they break ties between versions with
+// identical numeric segments.
 package lexver
 
 import (
 	"cmp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
 // Version is a parsed version with comparable fields.
 type Version struct {
-	Major      int
-	Minor      int
-	Patch      int
-	Channel    string // "" for stable, or "alpha", "beta", "dev", "pre", "preview", "rc"
-	ChannelNum int    // e.g. 2 in "rc2"
-	Date       string // release date "2024-01-15", if known (takes precedence over build)
-	Raw        string // original string as provided
+	// Nums holds the dotted numeric segments in order.
+	// "1.20.3" → [1, 20, 3], "121.0.6120.0" → [121, 0, 6120, 0].
+	Nums       []int
+	Channel    string    // "" for stable, or "alpha", "beta", "dev", "pre", "preview", "rc"
+	ChannelNum int       // e.g. 2 in "rc2"
+	Date       time.Time // release date/time, if known; breaks ties between same-numbered versions
+	Raw        string    // original string as provided
 }
 
 // Parse breaks a version string into its components.
@@ -35,22 +40,29 @@ func Parse(s string) Version {
 	s = strings.TrimLeft(s, "vV")
 
 	numStr, prerelease := splitAtPrerelease(s)
+	v.Nums = splitNums(numStr)
 
-	nums := splitNums(numStr)
-	if len(nums) > 0 {
-		v.Major = nums[0]
-	}
-	if len(nums) > 1 {
-		v.Minor = nums[1]
-	}
-	if len(nums) > 2 {
-		v.Patch = nums[2]
-	}
 	if prerelease != "" {
 		v.Channel, v.ChannelNum = splitChannel(prerelease)
 	}
 
 	return v
+}
+
+// Major returns the first numeric segment, or 0 if none.
+func (v Version) Major() int { return v.num(0) }
+
+// Minor returns the second numeric segment, or 0 if none.
+func (v Version) Minor() int { return v.num(1) }
+
+// Patch returns the third numeric segment, or 0 if none.
+func (v Version) Patch() int { return v.num(2) }
+
+func (v Version) num(i int) int {
+	if i < len(v.Nums) {
+		return v.Nums[i]
+	}
+	return 0
 }
 
 // IsStable reports whether this is a stable (non-pre-release) version.
@@ -61,25 +73,23 @@ func (v Version) IsStable() bool {
 // Compare returns -1, 0, or 1 for ordering two versions.
 // Stable releases sort after pre-releases of the same numeric version.
 func Compare(a, b Version) int {
-	if c := cmp.Compare(a.Major, b.Major); c != 0 {
-		return c
-	}
-	if c := cmp.Compare(a.Minor, b.Minor); c != 0 {
-		return c
-	}
-	if c := cmp.Compare(a.Patch, b.Patch); c != 0 {
-		return c
-	}
-
-	// If both have dates, use them to break ties within the same
-	// major.minor.patch. Dates are ISO strings so they compare correctly.
-	if a.Date != "" && b.Date != "" {
-		if c := cmp.Compare(a.Date, b.Date); c != 0 {
+	// Compare numeric segments pairwise, treating missing segments as 0.
+	n := max(len(a.Nums), len(b.Nums))
+	for i := range n {
+		an, bn := a.num(i), b.num(i)
+		if c := cmp.Compare(an, bn); c != 0 {
 			return c
 		}
 	}
 
-	// Both stable → equal (in version terms).
+	// Break ties with release date when both are known.
+	if !a.Date.IsZero() && !b.Date.IsZero() {
+		if c := a.Date.Compare(b.Date); c != 0 {
+			return c
+		}
+	}
+
+	// Both stable → equal.
 	if a.Channel == "" && b.Channel == "" {
 		return 0
 	}
@@ -98,17 +108,13 @@ func Compare(a, b Version) int {
 }
 
 // HasPrefix reports whether v matches a partial version prefix.
-// A prefix matches if its non-zero fields equal the corresponding fields in v.
-// For example, prefix {Major:1, Minor:20} matches any 1.20.x version.
+// A prefix with Nums [1, 20] matches any version starting with 1.20
+// (e.g. 1.20.0, 1.20.3, 1.20.3.1).
 func (v Version) HasPrefix(prefix Version) bool {
-	if prefix.Major != v.Major {
-		return false
-	}
-	if prefix.Minor != 0 && prefix.Minor != v.Minor {
-		return false
-	}
-	if prefix.Patch != 0 && prefix.Patch != v.Patch {
-		return false
+	for i, pn := range prefix.Nums {
+		if i >= len(v.Nums) || v.Nums[i] != pn {
+			return false
+		}
 	}
 	return true
 }
@@ -133,6 +139,7 @@ func splitAtPrerelease(s string) (string, string) {
 }
 
 // splitNums parses "1.20.3" into [1, 20, 3].
+// Handles any number of dot-separated segments.
 func splitNums(s string) []int {
 	var nums []int
 	for _, seg := range strings.Split(s, ".") {
