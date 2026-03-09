@@ -112,6 +112,33 @@ func TestIsStable(t *testing.T) {
 	}
 }
 
+func TestDateTiebreaker(t *testing.T) {
+	a := lexver.Parse("1.0.0")
+	a.Date = "2024-01-15"
+
+	b := lexver.Parse("1.0.0")
+	b.Date = "2024-06-01"
+
+	if lexver.Compare(a, b) >= 0 {
+		t.Error("earlier date should sort before later date at same version")
+	}
+
+	// Without dates, same version is equal.
+	c := lexver.Parse("1.0.0")
+	d := lexver.Parse("1.0.0")
+	if lexver.Compare(c, d) != 0 {
+		t.Error("same version without dates should be equal")
+	}
+
+	// Date only matters when both have it.
+	e := lexver.Parse("1.0.0")
+	e.Date = "2024-01-15"
+	f := lexver.Parse("1.0.0")
+	if lexver.Compare(e, f) != 0 {
+		t.Error("date should be ignored when only one side has it")
+	}
+}
+
 func TestHasPrefix(t *testing.T) {
 	v := lexver.Parse("1.20.3")
 

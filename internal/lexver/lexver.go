@@ -22,9 +22,9 @@ type Version struct {
 	Major      int
 	Minor      int
 	Patch      int
-	Build      int
 	Channel    string // "" for stable, or "alpha", "beta", "dev", "pre", "preview", "rc"
 	ChannelNum int    // e.g. 2 in "rc2"
+	Date       string // release date "2024-01-15", if known (takes precedence over build)
 	Raw        string // original string as provided
 }
 
@@ -46,10 +46,6 @@ func Parse(s string) Version {
 	if len(nums) > 2 {
 		v.Patch = nums[2]
 	}
-	if len(nums) > 3 {
-		v.Build = nums[3]
-	}
-
 	if prerelease != "" {
 		v.Channel, v.ChannelNum = splitChannel(prerelease)
 	}
@@ -74,8 +70,13 @@ func Compare(a, b Version) int {
 	if c := cmp.Compare(a.Patch, b.Patch); c != 0 {
 		return c
 	}
-	if c := cmp.Compare(a.Build, b.Build); c != 0 {
-		return c
+
+	// If both have dates, use them to break ties within the same
+	// major.minor.patch. Dates are ISO strings so they compare correctly.
+	if a.Date != "" && b.Date != "" {
+		if c := cmp.Compare(a.Date, b.Date); c != 0 {
+			return c
+		}
 	}
 
 	// Both stable → equal (in version terms).
