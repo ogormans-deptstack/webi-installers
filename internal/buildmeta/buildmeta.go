@@ -87,17 +87,6 @@ const (
 	ChannelDev     Channel = "dev"
 )
 
-// ChannelNames lists recognized channel names in priority order.
-var ChannelNames = []Channel{
-	ChannelStable,
-	ChannelLatest,
-	ChannelRC,
-	ChannelPreview,
-	ChannelBeta,
-	ChannelAlpha,
-	ChannelDev,
-}
-
 // Target represents a fully resolved build target.
 type Target struct {
 	OS   OS
@@ -108,28 +97,4 @@ type Target struct {
 // Triplet returns the canonical "os-arch-libc" string.
 func (t Target) Triplet() string {
 	return string(t.OS) + "-" + string(t.Arch) + "-" + string(t.Libc)
-}
-
-// Release represents a single downloadable build artifact.
-type Release struct {
-	Name     string  `json:"name"`
-	Version  string  `json:"version"`
-	LTS      bool    `json:"lts"`
-	Channel  Channel `json:"channel"`
-	Date     string  `json:"date"` // "2024-01-15"
-	OS       OS      `json:"os"`
-	Arch     Arch    `json:"arch"`
-	Libc     Libc    `json:"libc"`
-	Ext      Format  `json:"ext"`
-	Download string  `json:"download"`
-	Comment  string  `json:"comment,omitempty"`
-}
-
-// PackageMeta holds aggregate metadata about a package's available releases.
-type PackageMeta struct {
-	Name    string    `json:"name"`
-	OSes    []OS      `json:"oses"`
-	Arches  []Arch    `json:"arches"`
-	Libcs   []Libc    `json:"libcs"`
-	Formats []Format  `json:"formats"`
 }

@@ -1,12 +1,10 @@
-// Package httpclient provides a secure, resilient HTTP client for upstream API
-// calls. It exists because [http.DefaultClient] has no timeouts, no retry
-// logic, and follows redirects from HTTPS to HTTP — none of which are
-// acceptable for a server making calls to GitHub, Gitea, etc. on behalf of
-// users.
+// Package httpclient provides a well-configured [http.Client] for upstream
+// API calls. It exists because [http.DefaultClient] has no timeouts, no TLS
+// minimum, and follows redirects from HTTPS to HTTP — none of which are
+// acceptable for a server calling GitHub, Gitea, etc. on behalf of users.
 //
-// Create a [Client] with [New], then use [Client.Do] or [Client.Get]. All
-// calls require [context.Context] and will automatically retry transient
-// failures (429, 502, 503, 504) with backoff.
+// Use [New] to create a configured client. Use [Do] to execute a request
+// with automatic retries for transient failures.
 package httpclient
 
 import (
@@ -21,78 +19,38 @@ import (
 	"time"
 )
 
-// Client wraps http.Client with retry logic and resilience defaults.
-type Client struct {
-	inner     *http.Client
-	userAgent string
-	retries   int
-	baseDelay time.Duration
-	maxDelay  time.Duration
-}
+const userAgent = "Webi/2.0 (+https://webinstall.dev)"
 
-// Option configures a Client.
-type Option func(*Client)
-
-// WithUserAgent sets the User-Agent header for all requests.
-func WithUserAgent(ua string) Option {
-	return func(c *Client) { c.userAgent = ua }
-}
-
-// WithRetries sets the maximum number of retries for transient errors.
-func WithRetries(n int) Option {
-	return func(c *Client) { c.retries = n }
-}
-
-// WithBaseDelay sets the initial delay for exponential backoff.
-func WithBaseDelay(d time.Duration) Option {
-	return func(c *Client) { c.baseDelay = d }
-}
-
-// New creates a Client with secure, resilient defaults.
-func New(opts ...Option) *Client {
-	transport := &http.Transport{
-		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
+// New returns an [http.Client] with secure, production-ready defaults:
+// TLS 1.2+, timeouts at every level, connection pooling, no HTTPS→HTTP
+// redirect, and a Webi User-Agent.
+func New() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout:   10 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+			TLSHandshakeTimeout:  10 * time.Second,
+			ResponseHeaderTimeout: 30 * time.Second,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   10,
+			IdleConnTimeout:       90 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			ForceAttemptHTTP2:     true,
 		},
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout:  30 * time.Second,
-		MaxIdleConns:           100,
-		MaxIdleConnsPerHost:    10,
-		IdleConnTimeout:        90 * time.Second,
-		ExpectContinueTimeout:  1 * time.Second,
-		ForceAttemptHTTP2:      true,
+		Timeout:       60 * time.Second,
+		CheckRedirect: checkRedirect,
 	}
-
-	c := &Client{
-		inner: &http.Client{
-			Transport: transport,
-			Timeout:   60 * time.Second,
-			CheckRedirect: checkRedirect,
-		},
-		userAgent: "Webi/2.0 (+https://webinstall.dev)",
-		retries:   3,
-		baseDelay: 1 * time.Second,
-		maxDelay:  30 * time.Second,
-	}
-
-	for _, opt := range opts {
-		opt(c)
-	}
-
-	return c
 }
-
-// maxRedirects is the redirect depth limit.
-const maxRedirects = 10
 
 // checkRedirect prevents HTTPS→HTTP downgrades and limits redirect depth.
 func checkRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) >= maxRedirects {
-		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after %d redirects", len(via))
 	}
 	if len(via) > 0 && via[0].URL.Scheme == "https" && req.URL.Scheme == "http" {
 		return errors.New("refused redirect from https to http")
@@ -100,36 +58,57 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
-// Do executes a request with automatic retries for transient errors.
-// It sets the User-Agent header if not already present.
-func (c *Client) Do(req *http.Request) (*http.Response, error) {
+// Get performs a GET request with the Webi User-Agent header.
+func Get(ctx context.Context, client *http.Client, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	return client.Do(req)
+}
+
+// Do executes a request with automatic retries for transient errors (429,
+// 502, 503, 504). Retries up to 3 times with exponential backoff and jitter.
+// Respects Retry-After headers. Only retries GET and HEAD (idempotent).
+//
+// Sets the Webi User-Agent header if not already present.
+func Do(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
 	if req.Header.Get("User-Agent") == "" {
-		req.Header.Set("User-Agent", c.userAgent)
+		req.Header.Set("User-Agent", userAgent)
 	}
 
+	// Only retry idempotent methods.
+	idempotent := req.Method == http.MethodGet || req.Method == http.MethodHead
+
+	const maxRetries = 3
 	var resp *http.Response
 	var err error
 
-	for attempt := 0; attempt <= c.retries; attempt++ {
+	for attempt := range maxRetries + 1 {
 		if attempt > 0 {
-			delay := c.backoff(attempt, resp)
-			select {
-			case <-req.Context().Done():
-				return nil, req.Context().Err()
-			case <-time.After(delay):
+			if !idempotent {
+				break
 			}
 
-			// Close previous response body before retry.
+			delay := backoff(attempt, resp)
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
+
 			if resp != nil {
 				resp.Body.Close()
 			}
 		}
 
-		resp, err = c.inner.Do(req)
+		resp, err = client.Do(req)
 		if err != nil {
-			// Retry on transient network errors.
-			if req.Context().Err() != nil {
-				return nil, req.Context().Err()
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
 			}
 			continue
 		}
@@ -139,62 +118,37 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		}
 	}
 
-	// Exhausted retries — return whatever we have.
 	if err != nil {
-		return nil, fmt.Errorf("after %d retries: %w", c.retries, err)
+		return nil, fmt.Errorf("after %d retries: %w", maxRetries, err)
 	}
 	return resp, nil
 }
 
-// Get is a convenience wrapper around Do for GET requests.
-func (c *Client) Get(ctx context.Context, url string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	return c.Do(req)
-}
-
-// isRetryable returns true for HTTP status codes that indicate a transient error.
 func isRetryable(status int) bool {
-	switch status {
-	case http.StatusTooManyRequests,       // 429
-		http.StatusBadGateway,             // 502
-		http.StatusServiceUnavailable,     // 503
-		http.StatusGatewayTimeout:         // 504
-		return true
-	}
-	return false
+	return status == http.StatusTooManyRequests ||
+		status == http.StatusBadGateway ||
+		status == http.StatusServiceUnavailable ||
+		status == http.StatusGatewayTimeout
 }
 
-// backoff calculates the delay before the next retry attempt.
-// Uses exponential backoff with jitter, and respects Retry-After headers.
-func (c *Client) backoff(attempt int, resp *http.Response) time.Duration {
-	// Check Retry-After header from previous response.
+// backoff returns a delay before the next retry. Respects Retry-After,
+// otherwise uses exponential backoff with jitter.
+func backoff(attempt int, resp *http.Response) time.Duration {
 	if resp != nil {
 		if ra := resp.Header.Get("Retry-After"); ra != "" {
-			if seconds, err := strconv.Atoi(ra); err == nil {
-				d := time.Duration(seconds) * time.Second
-				if d > 0 && d < 5*time.Minute {
-					return d
-				}
+			if seconds, err := strconv.Atoi(ra); err == nil && seconds > 0 && seconds < 300 {
+				return time.Duration(seconds) * time.Second
 			}
 		}
 	}
 
-	// Exponential backoff: baseDelay * 2^attempt + jitter
-	delay := c.baseDelay
-	for i := 1; i < attempt; i++ {
-		delay *= 2
-		if delay > c.maxDelay {
-			delay = c.maxDelay
-			break
-		}
+	// 1s, 2s, 4s base delays
+	base := time.Second << (attempt - 1)
+	if base > 30*time.Second {
+		base = 30 * time.Second
 	}
 
-	// Add jitter: ±25%
-	jitter := time.Duration(float64(delay) * 0.5 * rand.Float64())
-	delay = delay + jitter - (delay / 4)
-
-	return delay
+	// Add jitter: 75% to 125% of base
+	jitter := float64(base) * (0.75 + 0.5*rand.Float64())
+	return time.Duration(jitter)
 }

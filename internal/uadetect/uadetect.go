@@ -5,10 +5,11 @@
 // "Darwin 23.1.0 arm64" or "Linux 6.1.0 x86_64". This package parses those
 // into [buildmeta.OS], [buildmeta.Arch], and [buildmeta.Libc] values so the
 // server can select the correct release artifact.
+//
+// Also handles non-uname agents like "PowerShell/7.3.0" and "MS AMD64".
 package uadetect
 
 import (
-	"regexp"
 	"strings"
 
 	"github.com/webinstall/webi-installers/internal/buildmeta"
@@ -23,136 +24,180 @@ type Result struct {
 
 // Parse extracts OS, arch, and libc from a User-Agent string.
 func Parse(ua string) Result {
+	if ua == "-" {
+		return Result{}
+	}
+
+	tokens := tokenize(ua)
+
 	return Result{
-		OS:   DetectOS(ua),
-		Arch: DetectArch(ua),
-		Libc: DetectLibc(ua),
+		OS:   matchOS(tokens),
+		Arch: matchArch(tokens),
+		Libc: matchLibc(tokens),
 	}
 }
 
-// DetectOS returns the OS from a User-Agent string.
-func DetectOS(ua string) buildmeta.OS {
-	if ua == "-" {
-		return ""
+// tokenize splits a User-Agent into lowercase tokens for matching.
+// Splits on whitespace, '/', and ';', since UAs come in various forms:
+//
+//	"Darwin 23.1.0 arm64"                    (uname -srm)
+//	"PowerShell/7.3.0"                       (PowerShell)
+//	"MS AMD64"                               (Windows shorthand)
+//	"Macintosh; Intel Mac OS X 10_15_7"      (browser)
+func tokenize(ua string) []string {
+	// Strip xnu kernel info that can mislead arch detection under Rosetta.
+	// "xnu-7195.60.75~1/RELEASE_ARM64_T8101" contains ARM64 even when
+	// running as x86_64. This only appears in verbose uname output.
+	if i := strings.Index(ua, "xnu-"); i >= 0 {
+		end := strings.IndexByte(ua[i:], ' ')
+		if end < 0 {
+			ua = ua[:i]
+		} else {
+			ua = ua[:i] + ua[i+end:]
+		}
 	}
 
-	// Android must be tested before Linux.
-	if reAndroid.MatchString(ua) {
+	return strings.FieldsFunc(strings.ToLower(ua), func(r rune) bool {
+		return r == ' ' || r == '/' || r == ';' || r == '\t'
+	})
+}
+
+// matchOS identifies the operating system from tokens.
+// Order matters: Android before Linux, Linux before Windows (for WSL).
+func matchOS(tokens []string) buildmeta.OS {
+	has := func(s string) bool {
+		for _, t := range tokens {
+			if strings.Contains(t, s) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Android must be checked before Linux.
+	if has("android") {
 		return buildmeta.OSAndroid
 	}
 
-	// macOS/Darwin must be tested before Linux (for edge cases) and before
-	// "win" (because "darwin" contains no "win", but ordering matters).
-	if reDarwin.MatchString(ua) {
+	if has("darwin") || has("macos") || has("macintosh") || has("iphone") || has("ios") || has("ipad") {
 		return buildmeta.OSDarwin
 	}
+	// "mac" alone (not in "macintosh" which is already matched)
+	for _, t := range tokens {
+		if t == "mac" {
+			return buildmeta.OSDarwin
+		}
+	}
 
-	// Linux must be tested before Windows because WSL User-Agents contain
-	// both "Linux" and sometimes "Microsoft".
-	if reLinux.MatchString(ua) && !reCygwin.MatchString(ua) {
+	// Linux before Windows because WSL UAs contain both "linux" and "microsoft".
+	// But exclude Cygwin/msysgit which report Linux-like strings on Windows.
+	if has("linux") && !has("cygwin") && !has("msysgit") {
 		return buildmeta.OSLinux
 	}
 
-	if reWindows.MatchString(ua) {
+	if has("windows") || has("win32") || has("microsoft") || has("powershell") {
 		return buildmeta.OSWindows
 	}
+	for _, t := range tokens {
+		if t == "ms" || t == "win" {
+			return buildmeta.OSWindows
+		}
+	}
 
-	// Try Linux again after Windows (for plain "curl" or "wget").
-	if reLinuxLoose.MatchString(ua) {
+	// Fallback: curl and wget imply a POSIX system, almost always Linux.
+	if has("curl") || has("wget") {
 		return buildmeta.OSLinux
 	}
 
 	return ""
 }
 
-// DetectArch returns the CPU architecture from a User-Agent string.
-func DetectArch(ua string) buildmeta.Arch {
-	if ua == "-" {
-		return ""
+// matchArch identifies the CPU architecture from tokens.
+// More specific patterns are checked before less specific ones.
+func matchArch(tokens []string) buildmeta.Arch {
+	has := func(s string) bool {
+		for _, t := range tokens {
+			if strings.Contains(t, s) {
+				return true
+			}
+		}
+		return false
+	}
+	exact := func(s string) bool {
+		for _, t := range tokens {
+			if t == s {
+				return true
+			}
+		}
+		return false
 	}
 
-	// Strip macOS kernel release arch info that can mislead detection.
-	// e.g. "xnu-7195.60.75~1/RELEASE_ARM64_T8101 x86_64" under Rosetta
-	ua = reXNU.ReplaceAllString(ua, "")
-
-	// Order matters — more specific patterns first.
-	if reARM64.MatchString(ua) {
+	// ARM 64-bit (most specific first)
+	if has("aarch64") || has("arm64") || has("armv8") {
 		return buildmeta.ArchARM64
 	}
-	if reARMv7.MatchString(ua) {
+
+	// ARM 32-bit variants
+	if has("armv7") || has("arm32") {
 		return buildmeta.ArchARMv7
 	}
-	if reARMv6.MatchString(ua) {
+	if has("armv6") {
 		return buildmeta.ArchARMv6
 	}
-	if rePPC64LE.MatchString(ua) {
+	// Bare "arm" without a version qualifier → armv6 (conservative).
+	if exact("arm") {
+		return buildmeta.ArchARMv6
+	}
+
+	// POWER (check before generic 64-bit)
+	if has("ppc64le") {
 		return buildmeta.ArchPPC64LE
 	}
-	if rePPC64.MatchString(ua) {
+	if has("ppc64") {
 		return buildmeta.ArchPPC64
 	}
-	if reMIPS64.MatchString(ua) {
+
+	// MIPS (check before generic 64-bit)
+	if has("mips64") {
 		return buildmeta.ArchMIPS64
 	}
-	if reMIPS.MatchString(ua) {
+	if has("mips") {
 		return buildmeta.ArchMIPS
 	}
-	// amd64 must come after ppc64/mips64 (both contain "64").
-	if reAMD64.MatchString(ua) {
+
+	// x86-64
+	if has("x86_64") || has("amd64") || exact("x64") {
 		return buildmeta.ArchAMD64
 	}
-	// x86 must come after x86_64/amd64.
-	if reX86.MatchString(ua) {
+
+	// x86 32-bit (after x86_64 to avoid false match)
+	if has("i386") || has("i686") || exact("x86") {
 		return buildmeta.ArchX86
 	}
 
 	return ""
 }
 
-// DetectLibc returns the C library variant from a User-Agent string.
-func DetectLibc(ua string) buildmeta.Libc {
-	if ua == "-" {
-		return ""
+// matchLibc identifies the C library from tokens.
+func matchLibc(tokens []string) buildmeta.Libc {
+	has := func(s string) bool {
+		for _, t := range tokens {
+			if strings.Contains(t, s) {
+				return true
+			}
+		}
+		return false
 	}
 
-	lower := strings.ToLower(ua)
-
-	if reMusl.MatchString(lower) {
+	if has("musl") {
 		return buildmeta.LibcMusl
 	}
-	if reMSVC.MatchString(lower) {
+	if has("msvc") || has("windows") || has("microsoft") {
 		return buildmeta.LibcMSVC
 	}
-	if reGNU.MatchString(lower) {
+	if has("gnu") || has("glibc") || has("linux") {
 		return buildmeta.LibcGNU
 	}
 
-	// Default: no specific libc requirement detected.
 	return buildmeta.LibcNone
 }
-
-// Compiled regexes — allocated once.
-var (
-	reAndroid        = regexp.MustCompile(`(?i)Android`)
-	reDarwin         = regexp.MustCompile(`(?i)iOS|iPhone|Macintosh|Darwin|OS\s*X|macOS|mac`)
-	reLinux  = regexp.MustCompile(`(?i)Linux`)
-	reCygwin = regexp.MustCompile(`(?i)cygwin|msysgit`)
-	reWindows        = regexp.MustCompile(`(?i)(\b|^)ms(\b|$)|Microsoft|Windows|win32|win|PowerShell`)
-	reLinuxLoose     = regexp.MustCompile(`(?i)Linux|curl|wget`)
-
-	reXNU = regexp.MustCompile(`xnu-\S*RELEASE_\S*`)
-
-	reARM64  = regexp.MustCompile(`(?i)(\b|_)(aarch64|arm64|arm8|armv8)`)
-	reARMv7  = regexp.MustCompile(`(?i)(\b|_)(aarch|arm7|armv7|arm32)`)
-	reARMv6  = regexp.MustCompile(`(?i)(\b|_)(arm6|armv6|arm(\b|_))`)
-	rePPC64LE = regexp.MustCompile(`(?i)ppc64le`)
-	rePPC64  = regexp.MustCompile(`(?i)ppc64`)
-	reMIPS64 = regexp.MustCompile(`(?i)mips64`)
-	reMIPS   = regexp.MustCompile(`(?i)mips`)
-	reAMD64  = regexp.MustCompile(`(?i)(amd64|x86_64|x64|_64)\b`)
-	reX86    = regexp.MustCompile(`(?i)(\b|_)(3|6|x|_)86\b`)
-
-	reMusl = regexp.MustCompile(`(\b|_)musl(\b|_)`)
-	reMSVC = regexp.MustCompile(`(\b|_)(msvc|windows|microsoft)(\b|_)`)
-	reGNU  = regexp.MustCompile(`(\b|_)(gnu|glibc|linux)(\b|_)`)
-)

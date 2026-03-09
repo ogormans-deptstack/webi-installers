@@ -7,21 +7,18 @@ import (
 	"github.com/webinstall/webi-installers/internal/uadetect"
 )
 
-func TestDetectOS(t *testing.T) {
+func TestOS(t *testing.T) {
 	tests := []struct {
 		ua   string
 		want buildmeta.OS
 	}{
-		// macOS / Darwin
+		// uname -srm style
 		{"Darwin 23.1.0 arm64", buildmeta.OSDarwin},
 		{"Darwin 20.2.0 x86_64", buildmeta.OSDarwin},
-		{"Macintosh; Intel Mac OS X 10_15_7", buildmeta.OSDarwin},
-
-		// Linux
 		{"Linux 6.1.0-18-amd64 x86_64", buildmeta.OSLinux},
 		{"Linux 5.15.0 aarch64", buildmeta.OSLinux},
 
-		// WSL (Linux, not Windows)
+		// WSL: Linux, not Windows (contains "microsoft" in kernel release)
 		{"Linux 5.15.146.1-microsoft-standard-WSL2 x86_64", buildmeta.OSLinux},
 
 		// Windows
@@ -29,28 +26,31 @@ func TestDetectOS(t *testing.T) {
 		{"PowerShell/7.3.0", buildmeta.OSWindows},
 		{"Microsoft Windows 10.0.19045", buildmeta.OSWindows},
 
-		// Android
+		// Android before Linux
 		{"Android 13 aarch64", buildmeta.OSAndroid},
 
-		// Minimal agents
+		// Browser-style
+		{"Macintosh; Intel Mac OS X 10_15_7", buildmeta.OSDarwin},
+
+		// Minimal agents → assume Linux
 		{"curl/8.1.2", buildmeta.OSLinux},
 		{"wget/1.21", buildmeta.OSLinux},
 
-		// Dash means unknown
+		// Explicit unknown
 		{"-", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.ua, func(t *testing.T) {
-			got := uadetect.DetectOS(tt.ua)
+			got := uadetect.Parse(tt.ua).OS
 			if got != tt.want {
-				t.Errorf("DetectOS(%q) = %q, want %q", tt.ua, got, tt.want)
+				t.Errorf("Parse(%q).OS = %q, want %q", tt.ua, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestDetectArch(t *testing.T) {
+func TestArch(t *testing.T) {
 	tests := []struct {
 		ua   string
 		want buildmeta.Arch
@@ -63,7 +63,7 @@ func TestDetectArch(t *testing.T) {
 		{"Linux 5.10.0 armv6l", buildmeta.ArchARMv6},
 		{"Linux 5.4.0 ppc64le", buildmeta.ArchPPC64LE},
 
-		// Rosetta: kernel says ARM64 but uname reports x86_64
+		// Rosetta: xnu kernel info says ARM64 but actual arch is x86_64
 		{"Darwin 20.2.0 Darwin Kernel Version 20.2.0; root:xnu-7195.60.75~1/RELEASE_ARM64_T8101 x86_64", buildmeta.ArchAMD64},
 
 		{"-", ""},
@@ -71,15 +71,15 @@ func TestDetectArch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.ua, func(t *testing.T) {
-			got := uadetect.DetectArch(tt.ua)
+			got := uadetect.Parse(tt.ua).Arch
 			if got != tt.want {
-				t.Errorf("DetectArch(%q) = %q, want %q", tt.ua, got, tt.want)
+				t.Errorf("Parse(%q).Arch = %q, want %q", tt.ua, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestDetectLibc(t *testing.T) {
+func TestLibc(t *testing.T) {
 	tests := []struct {
 		ua   string
 		want buildmeta.Libc
@@ -95,15 +95,15 @@ func TestDetectLibc(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.ua, func(t *testing.T) {
-			got := uadetect.DetectLibc(tt.ua)
+			got := uadetect.Parse(tt.ua).Libc
 			if got != tt.want {
-				t.Errorf("DetectLibc(%q) = %q, want %q", tt.ua, got, tt.want)
+				t.Errorf("Parse(%q).Libc = %q, want %q", tt.ua, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestParse(t *testing.T) {
+func TestFullParse(t *testing.T) {
 	r := uadetect.Parse("Darwin 23.1.0 arm64")
 	if r.OS != buildmeta.OSDarwin {
 		t.Errorf("OS = %q, want %q", r.OS, buildmeta.OSDarwin)
