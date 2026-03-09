@@ -205,6 +205,44 @@ func TestDateMinutePrecision(t *testing.T) {
 	}
 }
 
+func TestOriginal(t *testing.T) {
+	// Parse sets both Original and Raw to the input.
+	v := lexver.Parse("17.0")
+	if v.Original != "17.0" {
+		t.Errorf("Original = %q, want %q", v.Original, "17.0")
+	}
+
+	// Release fetcher would do:
+	//   v := lexver.Parse("17.0")
+	//   v.Original = "REL_17_0"
+	v.Original = "REL_17_0"
+	if v.Raw != "17.0" {
+		t.Errorf("Raw should remain %q after setting Original, got %q", "17.0", v.Raw)
+	}
+}
+
+func TestExtraSort(t *testing.T) {
+	// Flutter example: 2.3.0-16.0.pre and 2.3.0-16.1.pre
+	// Nums and Channel are the same; ExtraSort distinguishes them.
+	a := lexver.Parse("2.3.0-pre")
+	a.ExtraSort = "0016.0000"
+
+	b := lexver.Parse("2.3.0-pre")
+	b.ExtraSort = "0016.0001"
+
+	if lexver.Compare(a, b) >= 0 {
+		t.Error("ExtraSort 0016.0000 should sort before 0016.0001")
+	}
+
+	// ExtraSort ignored when only one side has it.
+	c := lexver.Parse("2.3.0-pre")
+	c.ExtraSort = "0016.0000"
+	d := lexver.Parse("2.3.0-pre")
+	if lexver.Compare(c, d) != 0 {
+		t.Error("ExtraSort should be ignored when only one side has it")
+	}
+}
+
 func TestHasPrefix(t *testing.T) {
 	v := lexver.Parse("1.20.3")
 

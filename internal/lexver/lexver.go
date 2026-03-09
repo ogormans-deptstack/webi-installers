@@ -30,12 +30,22 @@ type Version struct {
 	Channel    string    // "" for stable, or "alpha", "beta", "dev", "pre", "preview", "rc"
 	ChannelNum int       // e.g. 2 in "rc2"
 	Date       time.Time // release date/time, if known; breaks ties between same-numbered versions
-	Raw        string    // original string as provided
+	Original   string    // version string exactly as the releaser published it (e.g. "REL_17_0", "r21")
+	Raw        string    // version string after Webi's normalization (e.g. "17.0", "0.21.0")
+
+	// ExtraSort is an optional opaque string for package-specific ordering.
+	// Set by release-fetcher code for packages where Nums alone can't capture
+	// the sort order (e.g. flutter's "2.3.0-16.0.pre"). Compared as a plain
+	// string, only consulted when Nums and Channel are equal.
+	ExtraSort string
 }
 
 // Parse breaks a version string into its components.
+// Both Original and Raw are set to s; callers that normalize versions
+// (e.g. "REL_17_0" → "17.0") should set Original to the upstream tag
+// and pass the normalized string to Parse.
 func Parse(s string) Version {
-	v := Version{Raw: s}
+	v := Version{Original: s, Raw: s}
 
 	s = strings.TrimLeft(s, "vV")
 
@@ -85,6 +95,13 @@ func Compare(a, b Version) int {
 	// Break ties with release date when both are known.
 	if !a.Date.IsZero() && !b.Date.IsZero() {
 		if c := a.Date.Compare(b.Date); c != 0 {
+			return c
+		}
+	}
+
+	// ExtraSort: package-specific tiebreaker set by release-fetcher code.
+	if a.ExtraSort != "" && b.ExtraSort != "" {
+		if c := cmp.Compare(a.ExtraSort, b.ExtraSort); c != 0 {
 			return c
 		}
 	}
