@@ -1,15 +1,12 @@
-// Package httpclient provides a resilient HTTP client with best-practice
-// defaults for making upstream API calls (GitHub, Gitea, etc.).
+// Package httpclient provides a secure, resilient HTTP client for upstream API
+// calls. It exists because [http.DefaultClient] has no timeouts, no retry
+// logic, and follows redirects from HTTPS to HTTP — none of which are
+// acceptable for a server making calls to GitHub, Gitea, etc. on behalf of
+// users.
 //
-// Features:
-//   - Sensible timeouts at every level (connect, TLS, headers, overall)
-//   - Connection pooling with reasonable limits
-//   - TLS 1.2+ minimum
-//   - Limited redirect depth, no HTTPS→HTTP downgrade
-//   - Automatic retries with exponential backoff + jitter for transient errors
-//   - Respects Retry-After headers
-//   - Custom User-Agent identifying Webi
-//   - All calls require context.Context
+// Create a [Client] with [New], then use [Client.Do] or [Client.Get]. All
+// calls require [context.Context] and will automatically retry transient
+// failures (429, 502, 503, 504) with backoff.
 package httpclient
 
 import (

@@ -1,24 +1,12 @@
-// Package lexver converts version strings into lexicographically sortable
-// representations so that version comparison reduces to string comparison.
+// Package lexver makes version strings comparable via simple string comparison.
 //
-// The core problem: "1.20.3" must sort after "1.2.0", but as raw strings
-// "1.2" > "1.20" because '2' > '.' in ASCII. Lexver solves this by
-// zero-padding each numeric segment to a fixed width.
+// Version strings like "1.20.3" and "1.2.0" can't be compared as raw strings
+// because "1.2" > "1.20" in ASCII. Lexver normalizes them so that standard
+// string ordering matches semantic version ordering — including pre-release
+// channels (alpha < beta < rc < stable).
 //
-// Sorting rules:
-//   - Numeric segments are zero-padded and compared naturally
-//   - Stable releases sort after pre-releases of the same version
-//   - Pre-release channels sort alphabetically (alpha < beta < rc)
-//   - Numeric suffixes within channels sort numerically (rc2 > rc1)
-//
-// Examples:
-//
-//	"1.20.3"       → "0001.0020.0003.0000~"
-//	"1.0.0-beta1"  → "0001.0000.0000.0000-beta.0001"
-//	"1.0.0"        → "0001.0000.0000.0000~"
-//
-// The "~" character sorts after "-" in ASCII, so stable versions always
-// sort after any pre-release of the same numeric version.
+//	lexver.Parse("1.20.3") > lexver.Parse("1.2.0")    // true
+//	lexver.Parse("1.0.0")  > lexver.Parse("1.0.0-rc1") // true
 package lexver
 
 import (

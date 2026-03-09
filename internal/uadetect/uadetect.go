@@ -1,13 +1,10 @@
-// Package uadetect identifies OS, architecture, and libc from a User-Agent
-// string. The input is typically from curl's -A flag:
+// Package uadetect identifies the requesting system's OS, CPU architecture,
+// and libc from its User-Agent string.
 //
-//	curl -fsSA "$(uname -srm)" https://webi.sh/node
-//
-// Which produces something like:
-//
-//	"Darwin 23.1.0 arm64"
-//	"Linux 6.1.0 x86_64"
-//	"CYGWIN_NT-10.0-19045 3.5.3 x86_64"
+// Webi's bootstrap scripts send "$(uname -srm)" as the User-Agent, e.g.
+// "Darwin 23.1.0 arm64" or "Linux 6.1.0 x86_64". This package parses those
+// into [buildmeta.OS], [buildmeta.Arch], and [buildmeta.Libc] values so the
+// server can select the correct release artifact.
 package uadetect
 
 import (

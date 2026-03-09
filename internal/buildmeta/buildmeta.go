@@ -1,5 +1,9 @@
-// Package buildmeta defines the canonical constants for OS, architecture,
-// libc, archive format, and release channel used throughout Webi.
+// Package buildmeta is the shared vocabulary for Webi's build targets.
+//
+// Every package that deals with OS, architecture, libc, archive format, or
+// release channel imports these types instead of passing raw strings. This
+// prevents typos like "darwn" from compiling and gives a single place to
+// enumerate what Webi supports.
 package buildmeta
 
 // OS represents a target operating system.
