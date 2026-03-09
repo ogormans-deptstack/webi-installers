@@ -230,11 +230,12 @@ Node.js server.
 
 ### Phase 0: Foundation
 
-- [ ] `internal/buildmeta` — constants/enums for OS, arch, libc, format, channel
-- [ ] `internal/lexver` — version parsing and comparison
-- [ ] `internal/httpclient` — resilient HTTP client
-- [ ] `internal/uadetect` — User-Agent parsing
-- [ ] Go module init, CI setup
+- [x] `internal/buildmeta` — shared vocabulary (OS, arch, libc, format, channel)
+- [x] `internal/lexver` — version strings → comparable strings
+- [x] `internal/httpclient` — resilient HTTP client for upstream API calls
+- [x] `internal/uadetect` — User-Agent → OS/arch/libc
+- [x] Go module init (`go 1.24`, stdlib only)
+- [ ] CI setup
 
 ### Phase 1: Release Fetching
 
@@ -284,10 +285,11 @@ the website/cheat sheets (if it ever did — that may be a separate app).
 
 ## Key Design Decisions
 
-### Version: Go 1.26+
+### Version: Go 1.24+
 
 Using `http.ServeMux` with `PathValue` for routing (available since Go 1.22).
 Middleware via `github.com/therootcompany/golib/http/middleware/v2`.
+Module set to `go 1.24` — will bump as needed.
 
 ### No ORM
 
