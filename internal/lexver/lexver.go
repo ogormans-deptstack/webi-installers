@@ -1,99 +1,127 @@
-// Package lexver makes version strings comparable via simple string comparison.
+// Package lexver makes version strings comparable and sortable.
 //
-// Version strings like "1.20.3" and "1.2.0" can't be compared as raw strings
-// because "1.2" > "1.20" in ASCII. Lexver normalizes them so that standard
-// string ordering matches semantic version ordering — including pre-release
-// channels (alpha < beta < rc < stable).
+// Version numbers like "1.20.3" look numeric but aren't — as raw strings
+// "1.2" > "1.20". Webi needs to find "the latest 1.20.x" or "the newest
+// stable release" from a list. Lexver parses version strings into a struct
+// and provides a comparison function for use with [slices.SortFunc].
 //
-//	lexver.Parse("1.20.3") > lexver.Parse("1.2.0")    // true
-//	lexver.Parse("1.0.0")  > lexver.Parse("1.0.0-rc1") // true
+// Pre-releases sort before their corresponding stable release:
+//
+//	1.0.0-alpha1 < 1.0.0-beta1 < 1.0.0-rc1 < 1.0.0
 package lexver
 
 import (
+	"cmp"
 	"strconv"
 	"strings"
 	"unicode"
 )
 
-const (
-	numWidth     = 4 // zero-pad width for version numbers
-	chanNumWidth = 4 // zero-pad width for channel sequence numbers
-	numSegments  = 4 // major.minor.patch.build
-
-	// suffixStable sorts after suffixPre because '~' > '-' in ASCII.
-	suffixStable = "~"
-	suffixPre    = "-"
-)
-
-// Parse converts a version string to its lexicographically sortable form.
-func Parse(version string) string {
-	return format(splitVersion(version), false)
+// Version is a parsed version with comparable fields.
+type Version struct {
+	Major      int
+	Minor      int
+	Patch      int
+	Build      int
+	Channel    string // "" for stable, or "alpha", "beta", "dev", "pre", "preview", "rc"
+	ChannelNum int    // e.g. 2 in "rc2"
+	Raw        string // original string as provided
 }
 
-// ParsePrefix converts a partial version to a sortable prefix for matching.
-// Unlike Parse, it does not pad to the full segment count.
-//
-//	ParsePrefix("1.20") → "0001.0020"
-func ParsePrefix(version string) string {
-	return format(splitVersion(version), true)
-}
+// Parse breaks a version string into its components.
+func Parse(s string) Version {
+	v := Version{Raw: s}
 
-// versionParts holds the parsed components of a version string.
-type versionParts struct {
-	nums    []int  // numeric segments: [1, 20, 3, 0]
-	channel string // pre-release channel: "beta", "rc", "" for stable
-	chanNum int    // pre-release sequence: 1 in "beta1", 0 if absent
-}
+	s = strings.TrimLeft(s, "vV")
 
-// splitVersion breaks a version string into its semantic components.
-func splitVersion(version string) versionParts {
-	// Strip leading "v" or "V"
-	version = strings.TrimLeft(version, "vV")
+	numStr, prerelease := splitAtPrerelease(s)
 
-	var p versionParts
-
-	// Find where the pre-release suffix begins.
-	// We look for the first letter after the numeric prefix.
-	numStr, prerelease := splitAtPrerelease(version)
-
-	// Parse numeric segments
-	for _, seg := range strings.Split(numStr, ".") {
-		if seg == "" {
-			continue
-		}
-		n, err := strconv.Atoi(seg)
-		if err != nil {
-			// If we hit a non-numeric segment in the numeric part,
-			// treat it as start of prerelease.
-			if prerelease == "" {
-				prerelease = seg
-			} else {
-				prerelease = seg + "-" + prerelease
-			}
-			continue
-		}
-		p.nums = append(p.nums, n)
+	nums := splitNums(numStr)
+	if len(nums) > 0 {
+		v.Major = nums[0]
+	}
+	if len(nums) > 1 {
+		v.Minor = nums[1]
+	}
+	if len(nums) > 2 {
+		v.Patch = nums[2]
+	}
+	if len(nums) > 3 {
+		v.Build = nums[3]
 	}
 
-	// Parse pre-release: "beta1" → channel="beta", chanNum=1
 	if prerelease != "" {
-		p.channel, p.chanNum = splitChannel(prerelease)
+		v.Channel, v.ChannelNum = splitChannel(prerelease)
 	}
 
-	return p
+	return v
+}
+
+// IsStable reports whether this is a stable (non-pre-release) version.
+func (v Version) IsStable() bool {
+	return v.Channel == ""
+}
+
+// Compare returns -1, 0, or 1 for ordering two versions.
+// Stable releases sort after pre-releases of the same numeric version.
+func Compare(a, b Version) int {
+	if c := cmp.Compare(a.Major, b.Major); c != 0 {
+		return c
+	}
+	if c := cmp.Compare(a.Minor, b.Minor); c != 0 {
+		return c
+	}
+	if c := cmp.Compare(a.Patch, b.Patch); c != 0 {
+		return c
+	}
+	if c := cmp.Compare(a.Build, b.Build); c != 0 {
+		return c
+	}
+
+	// Both stable → equal (in version terms).
+	if a.Channel == "" && b.Channel == "" {
+		return 0
+	}
+	// Stable beats any pre-release.
+	if a.Channel == "" {
+		return 1
+	}
+	if b.Channel == "" {
+		return -1
+	}
+	// Both pre-release: alphabetical channel, then number.
+	if c := cmp.Compare(a.Channel, b.Channel); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.ChannelNum, b.ChannelNum)
+}
+
+// HasPrefix reports whether v matches a partial version prefix.
+// A prefix matches if its non-zero fields equal the corresponding fields in v.
+// For example, prefix {Major:1, Minor:20} matches any 1.20.x version.
+func (v Version) HasPrefix(prefix Version) bool {
+	if prefix.Major != v.Major {
+		return false
+	}
+	if prefix.Minor != 0 && prefix.Minor != v.Minor {
+		return false
+	}
+	if prefix.Patch != 0 && prefix.Patch != v.Patch {
+		return false
+	}
+	return true
 }
 
 // splitAtPrerelease splits "1.20.3-beta1" into ("1.20.3", "beta1").
-// Also handles "1.2beta3" (no separator before channel name).
+// Also handles "1.2beta3" (no separator).
 func splitAtPrerelease(s string) (string, string) {
-	// Try explicit separator first: dash, plus
 	for _, sep := range []byte{'-', '+'} {
 		if idx := strings.IndexByte(s, sep); idx >= 0 {
 			return s[:idx], s[idx+1:]
 		}
 	}
 
-	// Look for a letter following a digit: "1.2beta3"
+	// "1.2beta3": letter following a digit
 	for i := 1; i < len(s); i++ {
 		if unicode.IsLetter(rune(s[i])) && unicode.IsDigit(rune(s[i-1])) {
 			return s[:i], s[i:]
@@ -103,14 +131,24 @@ func splitAtPrerelease(s string) (string, string) {
 	return s, ""
 }
 
+// splitNums parses "1.20.3" into [1, 20, 3].
+func splitNums(s string) []int {
+	var nums []int
+	for _, seg := range strings.Split(s, ".") {
+		n, err := strconv.Atoi(seg)
+		if err != nil {
+			break
+		}
+		nums = append(nums, n)
+	}
+	return nums
+}
+
 // splitChannel separates "beta1" into ("beta", 1) or "rc" into ("rc", 0).
 func splitChannel(s string) (string, int) {
 	s = strings.ToLower(s)
-
-	// Normalize separators: "beta-1", "beta.1" → "beta1"
 	s = strings.NewReplacer("-", "", ".", "", "_", "").Replace(s)
 
-	// Find where trailing digits begin
 	i := len(s)
 	for i > 0 && unicode.IsDigit(rune(s[i-1])) {
 		i--
@@ -123,89 +161,4 @@ func splitChannel(s string) (string, int) {
 	}
 
 	return name, num
-}
-
-// format renders parsed version parts into a lexver string.
-func format(p versionParts, asPrefix bool) string {
-	// Pad numeric segments
-	count := len(p.nums)
-	if !asPrefix && count < numSegments {
-		count = numSegments
-	}
-
-	var b strings.Builder
-	b.Grow(count*5 + 20) // rough estimate
-
-	for i := 0; i < count; i++ {
-		if i > 0 {
-			b.WriteByte('.')
-		}
-		n := 0
-		if i < len(p.nums) {
-			n = p.nums[i]
-		}
-		b.WriteString(padInt(n, numWidth))
-	}
-
-	// Append stability suffix
-	if p.channel == "" {
-		b.WriteString(suffixStable)
-	} else {
-		b.WriteString(suffixPre)
-		b.WriteString(p.channel)
-		b.WriteByte('.')
-		b.WriteString(padInt(p.chanNum, chanNumWidth))
-	}
-
-	return b.String()
-}
-
-func padInt(n, width int) string {
-	s := strconv.Itoa(n)
-	for len(s) < width {
-		s = "0" + s
-	}
-	return s
-}
-
-// IsPreRelease reports whether version looks like a pre-release.
-func IsPreRelease(version string) bool {
-	p := splitVersion(version)
-	return p.channel != ""
-}
-
-// Match holds the result of searching a sorted lexver list.
-type Match struct {
-	// Latest is the newest version regardless of channel.
-	Latest string
-	// Stable is the newest stable (non-pre-release) version.
-	Stable string
-	// Default is Stable if available, otherwise Latest.
-	Default string
-	// Matches lists all lexvers matching the prefix, newest first.
-	Matches []string
-}
-
-// MatchSorted searches a descending-sorted slice of lexvers for entries
-// matching the given prefix. If prefix is empty, all versions match.
-func MatchSorted(lexvers []string, prefix string) Match {
-	var m Match
-	for _, lv := range lexvers {
-		if prefix != "" && !strings.HasPrefix(lv, prefix) {
-			continue
-		}
-		m.Matches = append(m.Matches, lv)
-		if m.Latest == "" {
-			m.Latest = lv
-		}
-		if m.Stable == "" && strings.HasSuffix(lv, suffixStable) {
-			m.Stable = lv
-		}
-	}
-	if m.Stable != "" {
-		m.Default = m.Stable
-	} else {
-		m.Default = m.Latest
-	}
-	return m
 }
