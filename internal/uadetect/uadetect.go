@@ -1,15 +1,19 @@
-// Package uadetect identifies the requesting system's OS, CPU architecture,
-// and libc from its User-Agent string.
+// Package uadetect identifies the requesting agent's OS, CPU architecture,
+// and libc so the server can select the correct release artifact.
 //
-// Webi's bootstrap scripts send "$(uname -srm)" as the User-Agent, e.g.
-// "Darwin 23.1.0 arm64" or "Linux 6.1.0 x86_64". This package parses those
-// into [buildmeta.OS], [buildmeta.Arch], and [buildmeta.Libc] values so the
-// server can select the correct release artifact.
+// An agent identifies itself through multiple signals:
+//   - The User-Agent header: Webi's bootstrap scripts send "$(uname -srm)",
+//     e.g. "Darwin 23.1.0 arm64". Browsers, curl, and PowerShell send their
+//     own UA strings.
+//   - Query parameters: ?os=linux&arch=arm64 are an explicit declaration
+//     that takes precedence over the header.
 //
-// Also handles non-uname agents like "PowerShell/7.3.0" and "MS AMD64".
+// Use [FromRequest] to detect from an HTTP request (preferred).
+// Use [Parse] to detect from a raw UA string.
 package uadetect
 
 import (
+	"net/http"
 	"strings"
 
 	"github.com/webinstall/webi-installers/internal/buildmeta"
@@ -20,6 +24,27 @@ type Result struct {
 	OS   buildmeta.OS
 	Arch buildmeta.Arch
 	Libc buildmeta.Libc
+}
+
+// FromRequest detects the agent's platform from an HTTP request.
+// Query parameters ?os and ?arch override the User-Agent header.
+func FromRequest(r *http.Request) Result {
+	qOS := r.URL.Query().Get("os")
+	qArch := r.URL.Query().Get("arch")
+
+	var ua string
+	switch {
+	case qOS != "" && qArch != "":
+		ua = qOS + " " + qArch
+	case qOS != "":
+		ua = qOS
+	case qArch != "":
+		ua = qArch
+	default:
+		ua = r.Header.Get("User-Agent")
+	}
+
+	return Parse(ua)
 }
 
 // Parse extracts OS, arch, and libc from a User-Agent string.

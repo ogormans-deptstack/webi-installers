@@ -1,6 +1,7 @@
 package uadetect_test
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/webinstall/webi-installers/internal/buildmeta"
@@ -98,6 +99,58 @@ func TestLibc(t *testing.T) {
 			got := uadetect.Parse(tt.ua).Libc
 			if got != tt.want {
 				t.Errorf("Parse(%q).Libc = %q, want %q", tt.ua, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFromRequest(t *testing.T) {
+	tests := []struct {
+		name   string
+		ua     string // User-Agent header
+		query  string // raw query string
+		wantOS buildmeta.OS
+		wantAr buildmeta.Arch
+	}{
+		{
+			name:   "UA header only",
+			ua:     "Darwin 23.1.0 arm64",
+			wantOS: buildmeta.OSDarwin,
+			wantAr: buildmeta.ArchARM64,
+		},
+		{
+			name:   "query params override UA",
+			ua:     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+			query:  "os=linux&arch=aarch64",
+			wantOS: buildmeta.OSLinux,
+			wantAr: buildmeta.ArchARM64,
+		},
+		{
+			name:   "os param only",
+			ua:     "curl/8.1.2",
+			query:  "os=windows",
+			wantOS: buildmeta.OSWindows,
+		},
+		{
+			name:   "arch param only",
+			ua:     "curl/8.1.2",
+			query:  "arch=arm64",
+			wantAr: buildmeta.ArchARM64,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", "http://example.com/api?"+tt.query, nil)
+			if tt.ua != "" {
+				req.Header.Set("User-Agent", tt.ua)
+			}
+			got := uadetect.FromRequest(req)
+			if tt.wantOS != "" && got.OS != tt.wantOS {
+				t.Errorf("OS = %q, want %q", got.OS, tt.wantOS)
+			}
+			if tt.wantAr != "" && got.Arch != tt.wantAr {
+				t.Errorf("Arch = %q, want %q", got.Arch, tt.wantAr)
 			}
 		})
 	}
