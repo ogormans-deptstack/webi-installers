@@ -226,6 +226,8 @@ type ghRelease struct {
 	Draft       bool      `json:"draft"`
 	PublishedAt string    `json:"published_at"`
 	Assets      []ghAsset `json:"assets"`
+	TarballURL  string    `json:"tarball_url"`
+	ZipballURL  string    `json:"zipball_url"`
 }
 
 type ghAsset struct {
@@ -301,6 +303,35 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]Di
 				Size:     asset.Size,
 				Date:     date,
 			})
+		}
+
+		// Source-tarball packages: no binary assets, distributed via
+		// GitHub's auto-generated tarball/zipball URLs.
+		if len(rel.Assets) == 0 {
+			if rel.TarballURL != "" {
+				dists = append(dists, Dist{
+					Package:  pkg,
+					Version:  version,
+					Channel:  channel,
+					Format:   ".tar.gz",
+					Download: rel.TarballURL,
+					Filename: rel.TagName + ".tar.gz",
+					Date:     date,
+					Extra:    "source",
+				})
+			}
+			if rel.ZipballURL != "" {
+				dists = append(dists, Dist{
+					Package:  pkg,
+					Version:  version,
+					Channel:  channel,
+					Format:   ".zip",
+					Download: rel.ZipballURL,
+					Filename: rel.TagName + ".zip",
+					Date:     date,
+					Extra:    "source",
+				})
+			}
 		}
 	}
 	return dists, nil
