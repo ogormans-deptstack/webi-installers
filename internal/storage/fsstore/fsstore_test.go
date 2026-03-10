@@ -38,7 +38,7 @@ func TestRoundTrip(t *testing.T) {
 			Date:     "2025-12-02",
 			OS:       "darwin",
 			Arch:     "aarch64",
-			Format:   "tar.gz",
+			Format:   ".tar.gz",
 			Download: "https://github.com/sharkdp/bat/releases/download/v0.26.1/bat-v0.26.1-aarch64-apple-darwin.tar.gz",
 		},
 		{
@@ -49,7 +49,7 @@ func TestRoundTrip(t *testing.T) {
 			OS:       "linux",
 			Arch:     "x86_64",
 			Libc:     "gnu",
-			Format:   "tar.gz",
+			Format:   ".tar.gz",
 			Download: "https://github.com/sharkdp/bat/releases/download/v0.26.1/bat-v0.26.1-x86_64-unknown-linux-gnu.tar.gz",
 		},
 	})

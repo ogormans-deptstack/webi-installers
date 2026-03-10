@@ -69,11 +69,38 @@ func ImportLegacy(lc LegacyCache) PackageData {
 	return PackageData{Assets: assets}
 }
 
+// legacyFormats is the set of formats the Node.js server recognizes.
+// Assets with formats not in this set are filtered out of legacy exports.
+var legacyFormats = map[string]bool{
+	".zip":    true,
+	".tar.gz": true,
+	".tar.xz": true,
+	".tar":    true,
+	".xz":     true,
+	".pkg":    true,
+	".msi":    true,
+	".exe":    true,
+	".dmg":    true,
+}
+
 // ExportLegacy converts PackageData to the LegacyCache wire format.
+// Assets with non-empty Variants or formats the Node.js server doesn't
+// handle are excluded.
 func ExportLegacy(pd PackageData) LegacyCache {
-	releases := make([]LegacyAsset, len(pd.Assets))
-	for i, a := range pd.Assets {
-		releases[i] = a.ToLegacy()
+	var releases []LegacyAsset
+	for _, a := range pd.Assets {
+		// Skip variant builds — Node.js doesn't have variant logic.
+		if len(a.Variants) > 0 {
+			continue
+		}
+		// Skip formats Node.js doesn't recognize.
+		if a.Format != "" && !legacyFormats[a.Format] {
+			continue
+		}
+		releases = append(releases, a.ToLegacy())
+	}
+	if releases == nil {
+		releases = []LegacyAsset{}
 	}
 	return LegacyCache{Releases: releases}
 }
