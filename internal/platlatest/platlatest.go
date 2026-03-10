@@ -22,7 +22,6 @@ import (
 	"sync"
 
 	"github.com/webinstall/webi-installers/internal/buildmeta"
-	"github.com/webinstall/webi-installers/internal/lexver"
 )
 
 // Index tracks the latest version for each build target of a package.
@@ -77,41 +76,6 @@ func (idx *Index) All() map[string]string {
 		out[k] = v
 	}
 	return out
-}
-
-// Resolve finds the latest compatible version for a target by walking
-// the arch and libc fallback chains. It prefers the newest version over
-// the most specific arch match.
-//
-// For example, on an amd64v4 machine with glibc:
-//   - v2.0.0 has amd64 (baseline) → candidate "v2.0.0"
-//   - v1.0.0 has amd64v4          → candidate "v1.0.0"
-//   - Returns "v2.0.0" because it's newer, even though v1.0.0
-//     is a more specific arch match.
-//
-// Returns the best version and the exact target it matched, or "" if
-// no compatible version exists.
-func (idx *Index) Resolve(t buildmeta.Target) (version string, matched buildmeta.Target) {
-	idx.mu.RLock()
-	defer idx.mu.RUnlock()
-
-	arches := buildmeta.ArchFallbacks(t.Arch)
-	libcs := buildmeta.LibcFallbacks(t.Libc)
-
-	for _, arch := range arches {
-		for _, libc := range libcs {
-			candidate := buildmeta.Target{OS: t.OS, Arch: arch, Libc: libc}
-			v := idx.m[candidate.Triplet()]
-			if v == "" {
-				continue
-			}
-			if version == "" || lexver.Compare(lexver.Parse(v), lexver.Parse(version)) > 0 {
-				version = v
-				matched = candidate
-			}
-		}
-	}
-	return version, matched
 }
 
 // Save persists the index to disk (atomic write).
