@@ -48,6 +48,17 @@ import (
 	"github.com/webinstall/webi-installers/internal/storage/fsstore"
 )
 
+// WebiCache holds the configuration for the cache daemon.
+type WebiCache struct {
+	ConfDir string          // root directory with {pkg}/releases.conf files
+	Store   *fsstore.Store  // classified asset storage
+	RawDir  string          // raw upstream response cache
+	Client  *http.Client    // HTTP client for upstream calls
+	Auth    *githubish.Auth // GitHub API auth (optional)
+	Shallow bool            // fetch only the first page of releases
+	NoFetch bool            // skip fetching, classify from existing raw data only
+}
+
 func main() {
 	confDir := flag.String("conf", ".", "root directory containing {pkg}/releases.conf files")
 	cacheDir := flag.String("cache", "_cache", "output cache directory (fsstore root)")
@@ -55,6 +66,7 @@ func main() {
 	token := flag.String("token", os.Getenv("GITHUB_TOKEN"), "GitHub API token")
 	once := flag.Bool("once", false, "run once then exit (no periodic refresh)")
 	noFetch := flag.Bool("no-fetch", false, "skip fetching, classify from existing raw data only")
+	shallow := flag.Bool("shallow", false, "fetch only the first page of releases (latest)")
 	interval := flag.Duration("interval", 15*time.Minute, "refresh interval")
 	flag.Parse()
 
@@ -63,53 +75,24 @@ func main() {
 		log.Fatalf("fsstore: %v", err)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
 	var auth *githubish.Auth
 	if *token != "" {
 		auth = &githubish.Auth{Token: *token}
 	}
 
-	filterPkgs := flag.Args()
-
-	run := func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
-
-		packages, err := discover(*confDir)
-		if err != nil {
-			log.Printf("discover: %v", err)
-			return
-		}
-
-		if len(filterPkgs) > 0 {
-			nameSet := make(map[string]bool, len(filterPkgs))
-			for _, a := range filterPkgs {
-				nameSet[a] = true
-			}
-			var filtered []pkgConf
-			for _, p := range packages {
-				if nameSet[p.name] {
-					filtered = append(filtered, p)
-				}
-			}
-			packages = filtered
-		}
-
-		log.Printf("refreshing %d packages", len(packages))
-
-		for _, pkg := range packages {
-			if alias := pkg.conf.Extra["alias_of"]; alias != "" {
-				continue
-			}
-
-			err := refreshPackage(ctx, client, store, *rawDir, pkg, auth, *noFetch)
-			if err != nil {
-				log.Printf("  ERROR %s: %v", pkg.name, err)
-			}
-		}
+	wc := &WebiCache{
+		ConfDir: *confDir,
+		Store:   store,
+		RawDir:  *rawDir,
+		Client:  &http.Client{Timeout: 30 * time.Second},
+		Auth:    auth,
+		Shallow: *shallow,
+		NoFetch: *noFetch,
 	}
 
-	run()
+	filterPkgs := flag.Args()
+
+	wc.Run(filterPkgs)
 	if *once {
 		return
 	}
@@ -118,7 +101,45 @@ func main() {
 	defer ticker.Stop()
 	log.Printf("running every %s (ctrl-c to stop)", *interval)
 	for range ticker.C {
-		run()
+		wc.Run(filterPkgs)
+	}
+}
+
+// Run discovers packages and refreshes each one.
+func (wc *WebiCache) Run(filterPkgs []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	packages, err := discover(wc.ConfDir)
+	if err != nil {
+		log.Printf("discover: %v", err)
+		return
+	}
+
+	if len(filterPkgs) > 0 {
+		nameSet := make(map[string]bool, len(filterPkgs))
+		for _, a := range filterPkgs {
+			nameSet[a] = true
+		}
+		var filtered []pkgConf
+		for _, p := range packages {
+			if nameSet[p.name] {
+				filtered = append(filtered, p)
+			}
+		}
+		packages = filtered
+	}
+
+	log.Printf("refreshing %d packages", len(packages))
+
+	for _, pkg := range packages {
+		if alias := pkg.conf.Extra["alias_of"]; alias != "" {
+			continue
+		}
+
+		if err := wc.refreshPackage(ctx, pkg); err != nil {
+			log.Printf("  ERROR %s: %v", pkg.name, err)
+		}
 	}
 }
 
@@ -156,19 +177,19 @@ func discover(dir string) ([]pkgConf, error) {
 
 // refreshPackage does the full pipeline for one package:
 // fetch raw → classify → write to fsstore.
-func refreshPackage(ctx context.Context, client *http.Client, store *fsstore.Store, rawDir string, pkg pkgConf, auth *githubish.Auth, skipFetch bool) error {
+func (wc *WebiCache) refreshPackage(ctx context.Context, pkg pkgConf) error {
 	name := pkg.name
 	conf := pkg.conf
 
 	// Step 1: Fetch raw upstream data to rawcache (unless -no-fetch).
-	if !skipFetch {
-		if err := fetchRaw(ctx, client, rawDir, pkg, auth); err != nil {
+	if !wc.NoFetch {
+		if err := wc.fetchRaw(ctx, pkg); err != nil {
 			return fmt.Errorf("fetch: %w", err)
 		}
 	}
 
 	// Step 2: Classify raw data into assets.
-	d, err := rawcache.Open(filepath.Join(rawDir, name))
+	d, err := rawcache.Open(filepath.Join(wc.RawDir, name))
 	if err != nil {
 		return fmt.Errorf("rawcache open: %w", err)
 	}
@@ -182,7 +203,7 @@ func refreshPackage(ctx context.Context, client *http.Client, store *fsstore.Sto
 	assets = applyConfig(assets, conf)
 
 	// Step 4: Write to fsstore.
-	tx, err := store.BeginRefresh(ctx, name)
+	tx, err := wc.Store.BeginRefresh(ctx, name)
 	if err != nil {
 		return fmt.Errorf("begin refresh: %w", err)
 	}
@@ -232,53 +253,53 @@ func applyConfig(assets []storage.Asset, conf *installerconf.Conf) []storage.Ass
 
 // --- Fetch raw ---
 
-func fetchRaw(ctx context.Context, client *http.Client, rawDir string, pkg pkgConf, auth *githubish.Auth) error {
+func (wc *WebiCache) fetchRaw(ctx context.Context, pkg pkgConf) error {
 	switch pkg.conf.Source {
 	case "github":
-		return fetchGitHub(ctx, client, rawDir, pkg.name, pkg.conf, auth)
+		return wc.fetchGitHub(ctx, pkg.name, pkg.conf)
 	case "nodedist":
-		return fetchNodeDist(ctx, client, rawDir, pkg.name, pkg.conf)
+		return wc.fetchNodeDist(ctx, pkg.name, pkg.conf)
 	case "gittag":
-		return fetchGitTag(ctx, rawDir, pkg.name, pkg.conf)
+		return wc.fetchGitTag(ctx, pkg.name, pkg.conf)
 	case "gitea":
-		return fetchGitea(ctx, client, rawDir, pkg.name, pkg.conf)
+		return wc.fetchGitea(ctx, pkg.name, pkg.conf)
 	case "chromedist":
-		return fetchChromeDist(ctx, client, rawDir, pkg.name)
+		return fetchChromeDist(ctx, wc.Client, wc.RawDir, pkg.name)
 	case "flutterdist":
-		return fetchFlutterDist(ctx, client, rawDir, pkg.name)
+		return fetchFlutterDist(ctx, wc.Client, wc.RawDir, pkg.name)
 	case "golang":
-		return fetchGolang(ctx, client, rawDir, pkg.name)
+		return fetchGolang(ctx, wc.Client, wc.RawDir, pkg.name)
 	case "gpgdist":
-		return fetchGPGDist(ctx, client, rawDir, pkg.name)
+		return fetchGPGDist(ctx, wc.Client, wc.RawDir, pkg.name)
 	case "hashicorp":
-		return fetchHashiCorp(ctx, client, rawDir, pkg.name, pkg.conf)
+		return fetchHashiCorp(ctx, wc.Client, wc.RawDir, pkg.name, pkg.conf)
 	case "iterm2dist":
-		return fetchITerm2Dist(ctx, client, rawDir, pkg.name)
+		return fetchITerm2Dist(ctx, wc.Client, wc.RawDir, pkg.name)
 	case "juliadist":
-		return fetchJuliaDist(ctx, client, rawDir, pkg.name)
+		return fetchJuliaDist(ctx, wc.Client, wc.RawDir, pkg.name)
 	case "mariadbdist":
-		return fetchMariaDBDist(ctx, client, rawDir, pkg.name)
+		return fetchMariaDBDist(ctx, wc.Client, wc.RawDir, pkg.name)
 	case "zigdist":
-		return fetchZigDist(ctx, client, rawDir, pkg.name)
+		return fetchZigDist(ctx, wc.Client, wc.RawDir, pkg.name)
 	default:
 		log.Printf("  %s: source %q not yet supported, skipping", pkg.name, pkg.conf.Source)
 		return nil
 	}
 }
 
-func fetchGitHub(ctx context.Context, client *http.Client, rawDir, pkgName string, conf *installerconf.Conf, auth *githubish.Auth) error {
+func (wc *WebiCache) fetchGitHub(ctx context.Context, pkgName string, conf *installerconf.Conf) error {
 	owner, repo := conf.Owner, conf.Repo
 	if owner == "" || repo == "" {
 		return fmt.Errorf("missing owner or repo")
 	}
 
-	d, err := rawcache.Open(filepath.Join(rawDir, pkgName))
+	d, err := rawcache.Open(filepath.Join(wc.RawDir, pkgName))
 	if err != nil {
 		return err
 	}
 
 	tagPrefix := conf.TagPrefix
-	for batch, err := range github.Fetch(ctx, client, owner, repo, auth) {
+	for batch, err := range github.Fetch(ctx, wc.Client, owner, repo, wc.Auth) {
 		if err != nil {
 			return fmt.Errorf("github %s/%s: %w", owner, repo, err)
 		}
@@ -293,24 +314,27 @@ func fetchGitHub(ctx context.Context, client *http.Client, rawDir, pkgName strin
 			data, _ := json.Marshal(rel)
 			d.Merge(tag, data)
 		}
+		if wc.Shallow {
+			break
+		}
 	}
 	return nil
 }
 
-func fetchNodeDist(ctx context.Context, client *http.Client, rawDir, pkgName string, conf *installerconf.Conf) error {
+func (wc *WebiCache) fetchNodeDist(ctx context.Context, pkgName string, conf *installerconf.Conf) error {
 	baseURL := conf.BaseURL
 	if baseURL == "" {
 		return fmt.Errorf("missing url")
 	}
 
-	d, err := rawcache.Open(filepath.Join(rawDir, pkgName))
+	d, err := rawcache.Open(filepath.Join(wc.RawDir, pkgName))
 	if err != nil {
 		return err
 	}
 
 	// Fetch from primary URL. Tag with "official/" prefix so unofficial
 	// entries for the same version don't overwrite.
-	for batch, err := range nodedist.Fetch(ctx, client, baseURL) {
+	for batch, err := range nodedist.Fetch(ctx, wc.Client, baseURL) {
 		if err != nil {
 			return err
 		}
@@ -323,7 +347,7 @@ func fetchNodeDist(ctx context.Context, client *http.Client, rawDir, pkgName str
 	// Fetch from unofficial URL if configured (e.g. Node.js unofficial builds
 	// which add musl, riscv64, loong64 targets).
 	if unofficialURL := conf.Extra["unofficial_url"]; unofficialURL != "" {
-		for batch, err := range nodedist.Fetch(ctx, client, unofficialURL) {
+		for batch, err := range nodedist.Fetch(ctx, wc.Client, unofficialURL) {
 			if err != nil {
 				log.Printf("warning: %s unofficial fetch: %v", pkgName, err)
 				break
@@ -338,18 +362,18 @@ func fetchNodeDist(ctx context.Context, client *http.Client, rawDir, pkgName str
 	return nil
 }
 
-func fetchGitTag(ctx context.Context, rawDir, pkgName string, conf *installerconf.Conf) error {
+func (wc *WebiCache) fetchGitTag(ctx context.Context, pkgName string, conf *installerconf.Conf) error {
 	gitURL := conf.BaseURL
 	if gitURL == "" {
 		return fmt.Errorf("missing url")
 	}
 
-	d, err := rawcache.Open(filepath.Join(rawDir, pkgName))
+	d, err := rawcache.Open(filepath.Join(wc.RawDir, pkgName))
 	if err != nil {
 		return err
 	}
 
-	repoDir := filepath.Join(rawDir, "_repos")
+	repoDir := filepath.Join(wc.RawDir, "_repos")
 	os.MkdirAll(repoDir, 0o755)
 
 	for batch, err := range gittag.Fetch(ctx, gitURL, repoDir) {
@@ -364,22 +388,25 @@ func fetchGitTag(ctx context.Context, rawDir, pkgName string, conf *installercon
 			data, _ := json.Marshal(entry)
 			d.Merge(tag, data)
 		}
+		if wc.Shallow {
+			break
+		}
 	}
 	return nil
 }
 
-func fetchGitea(ctx context.Context, client *http.Client, rawDir, pkgName string, conf *installerconf.Conf) error {
+func (wc *WebiCache) fetchGitea(ctx context.Context, pkgName string, conf *installerconf.Conf) error {
 	baseURL, owner, repo := conf.BaseURL, conf.Owner, conf.Repo
 	if baseURL == "" || owner == "" || repo == "" {
 		return fmt.Errorf("missing base_url, owner, or repo")
 	}
 
-	d, err := rawcache.Open(filepath.Join(rawDir, pkgName))
+	d, err := rawcache.Open(filepath.Join(wc.RawDir, pkgName))
 	if err != nil {
 		return err
 	}
 
-	for batch, err := range gitea.Fetch(ctx, client, baseURL, owner, repo, nil) {
+	for batch, err := range gitea.Fetch(ctx, wc.Client, baseURL, owner, repo, nil) {
 		if err != nil {
 			return err
 		}
@@ -389,6 +416,9 @@ func fetchGitea(ctx context.Context, client *http.Client, rawDir, pkgName string
 			}
 			data, _ := json.Marshal(rel)
 			d.Merge(rel.TagName, data)
+		}
+		if wc.Shallow {
+			break
 		}
 	}
 	return nil
