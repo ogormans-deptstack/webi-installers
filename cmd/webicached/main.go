@@ -308,15 +308,33 @@ func fetchNodeDist(ctx context.Context, client *http.Client, rawDir, pkgName str
 		return err
 	}
 
+	// Fetch from primary URL. Tag with "official/" prefix so unofficial
+	// entries for the same version don't overwrite.
 	for batch, err := range nodedist.Fetch(ctx, client, baseURL) {
 		if err != nil {
 			return err
 		}
 		for _, entry := range batch {
 			data, _ := json.Marshal(entry)
-			d.Merge(entry.Version, data)
+			d.Merge("official/"+entry.Version, data)
 		}
 	}
+
+	// Fetch from unofficial URL if configured (e.g. Node.js unofficial builds
+	// which add musl, riscv64, loong64 targets).
+	if unofficialURL := conf.Extra["unofficial_url"]; unofficialURL != "" {
+		for batch, err := range nodedist.Fetch(ctx, client, unofficialURL) {
+			if err != nil {
+				log.Printf("warning: %s unofficial fetch: %v", pkgName, err)
+				break
+			}
+			for _, entry := range batch {
+				data, _ := json.Marshal(entry)
+				d.Merge("unofficial/"+entry.Version, data)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -563,17 +581,25 @@ type nodeEntry struct {
 }
 
 func classifyNodeDist(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]storage.Asset, error) {
-	baseURL := conf.BaseURL
+	officialURL := conf.BaseURL
+	unofficialURL := conf.Extra["unofficial_url"]
+
 	releases, err := readAllRaw(d)
 	if err != nil {
 		return nil, err
 	}
 
 	var assets []storage.Asset
-	for _, data := range releases {
+	for tag, data := range releases {
 		var entry nodeEntry
 		if err := json.Unmarshal(data, &entry); err != nil {
 			continue
+		}
+
+		// Pick the right base URL from the tag prefix.
+		baseURL := officialURL
+		if strings.HasPrefix(tag, "unofficial_") {
+			baseURL = unofficialURL
 		}
 
 		lts := string(entry.LTS) != "false" && string(entry.LTS) != ""
