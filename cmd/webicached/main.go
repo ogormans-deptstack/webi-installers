@@ -504,17 +504,19 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 			})
 		}
 
-		// Source tarballs for packages with no binary assets.
+		// Source archives for packages with no binary assets.
+		// These are installable on any POSIX system (shell scripts, etc.).
 		if len(rel.Assets) == 0 {
 			if rel.TarballURL != "" {
 				assets = append(assets, storage.Asset{
 					Filename: rel.TagName + ".tar.gz",
 					Version:  version,
 					Channel:  channel,
+					OS:       "posix_2017",
+					Arch:     "*",
 					Format:   ".tar.gz",
 					Download: rel.TarballURL,
 					Date:     date,
-					Extra:    "source",
 				})
 			}
 			if rel.ZipballURL != "" {
@@ -522,10 +524,11 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 					Filename: rel.TagName + ".zip",
 					Version:  version,
 					Channel:  channel,
+					OS:       "posix_2017",
+					Arch:     "*",
 					Format:   ".zip",
 					Download: rel.ZipballURL,
 					Date:     date,
-					Extra:    "source",
 				})
 			}
 		}
@@ -1345,6 +1348,7 @@ func isMetaAsset(name string) bool {
 		"checksums.txt", "sha256sums", "sha512sums",
 		".sbom", ".spdx", ".json.sig", ".sigstore",
 		"_src.tar.gz", "_src.tar.xz", "_src.zip",
+		"-src.tar.gz", "-src.tar.xz", "-src.zip",
 		".d.ts", ".pub",
 	} {
 		if strings.HasSuffix(lower, suffix) {
