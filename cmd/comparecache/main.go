@@ -483,8 +483,8 @@ func isLiveNoise(name string) bool {
 		}
 	}
 
-	// Source tarballs (e.g. gitea-src-1.25.4.tar.gz).
-	if strings.Contains(lower, "-src-") || strings.HasPrefix(lower, "src-") {
+	// Source tarballs (e.g. gitea-src-1.25.4.tar.gz, caddy_2.10.0_src.tar.gz).
+	if strings.Contains(lower, "-src-") || strings.Contains(lower, "_src.") || strings.HasPrefix(lower, "src-") {
 		return true
 	}
 
