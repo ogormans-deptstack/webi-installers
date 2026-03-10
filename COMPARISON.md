@@ -164,7 +164,7 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 - [x] ollama — Ollama-darwin.zip tagged as "app" variant (Go can install,
       legacy excludes); .tgz normalized to .tar.gz in filename
 - [-] uuidv7 — exotic arches correctly classified; resolver filters by request
-- [x] yq — man_page_only tagged as "man-pages" variant in yq-specific tagger
+- [x] yq — man_page_only excluded via releases.conf
 - [x] ffmpeg — asset_filter=ffmpeg excludes ffprobe/ffplay; .LICENSE/.README
       now caught by isMetaAsset
 

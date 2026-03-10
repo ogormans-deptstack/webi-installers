@@ -51,7 +51,6 @@ import (
 	"github.com/webinstall/webi-installers/internal/releases/ollama"
 	"github.com/webinstall/webi-installers/internal/releases/pwsh"
 	"github.com/webinstall/webi-installers/internal/releases/xcaddy"
-	"github.com/webinstall/webi-installers/internal/releases/yq"
 	"github.com/webinstall/webi-installers/internal/releases/zigdist"
 	"github.com/webinstall/webi-installers/internal/storage"
 	"github.com/webinstall/webi-installers/internal/storage/fsstore"
@@ -1497,8 +1496,6 @@ func tagVariants(pkg string, _ *installerconf.Conf, assets []storage.Asset) {
 		pwsh.TagVariants(assets)
 	case "xcaddy":
 		xcaddy.TagVariants(assets)
-	case "yq":
-		yq.TagVariants(assets)
 	}
 }
 
