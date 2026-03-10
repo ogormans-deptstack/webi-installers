@@ -312,29 +312,56 @@ Binary in archive doesn't match expected binary name.
 | pathman | `pathman-v0.6.0-linux-amd64_v1` | `pathman` |
 | yq | `yq_linux_amd64` | `yq` |
 
-### Packages Not Inspected (special/large/known)
+### Pattern G: Full SDK/Toolchain
+
+Archive is a self-contained toolchain with compiler, runtime, standard library, etc.
+
+| Package | Archive | Layout |
+|---------|---------|--------|
+| cmake | tar.gz (61MB, 8748 files) | `cmake-{ver}-{os}-{arch}/bin/{cmake,ctest,cpack,ccmake,cmake-gui}` + `share/` + `man/` + `doc/` |
+| tinygo | tar.gz (56MB, 2030 files) | `tinygo/bin/tinygo` + `tinygo/src/` + `tinygo/targets/` + `tinygo/lib/` |
+| go | tar.gz | `go/bin/{go,gofmt}` + `go/src/` + `go/pkg/` |
+| zig | tar.xz | `zig-{os}-{arch}-{ver}/zig` + `zig-{os}-{arch}-{ver}/lib/` |
+| flutter | tar.xz/zip | `flutter/bin/flutter` + full SDK |
+| julia | tar.gz | `julia-{ver}/bin/julia` + full SDK |
+| node | tar.gz/tar.xz | `node-{ver}-{os}-{arch}/bin/{node,npm,npx}` + `lib/` |
+
+**Install pattern**: extract entire tree into `~/.local/opt/{pkg}-{ver}/`, symlink `bin/*`.
+
+### Pattern H: .NET Runtime Bundle
+
+Single-directory flat archive with hundreds of DLLs.
+
+| Package | Archive | Layout |
+|---------|---------|--------|
+| pwsh | tar.gz (74MB, 727 files) | `pwsh` binary + `*.dll` + locale dirs (`cs/`, `de/`, etc.) |
+
+**Install pattern**: extract entire directory into opt, symlink `pwsh` binary.
+
+### Pattern I: Multi-Binary Distribution
+
+Archive contains multiple related binaries + libs.
+
+| Package | Archive | Layout |
+|---------|---------|--------|
+| dashcore | tar.gz (58MB) | `dashcore-{ver}/bin/{dashd,dash-cli,dash-qt,dash-tx,...}` + `lib/` + `share/man/` |
+| mutagen | tar.gz (56MB) | `mutagen` + `mutagen-agents.tar.gz` (embedded agent archive) |
+
+**Install pattern**: extract into opt, symlink primary binary (dashd / mutagen).
+
+### Packages Not Downloaded (known structure)
 
 | Package | Reason |
 |---------|--------|
-| node, go, zig, flutter, julia | Well-known SDK layouts — documented elsewhere |
-| mariadb | Full database server — complex layout |
+| mariadb | Full database server — Pattern I equivalent |
 | gpg | macOS-only .dmg (GnuPG for OS X) |
 | iterm2 | macOS-only .zip (.app bundle) |
-| cmake | 61MB, well-known layout (bin/ + share/ + doc/) |
-| dashcore | 58MB, cryptocurrency daemon + CLI tools |
-| deno | 34MB zip, single binary — confirmed Pattern A |
-| k9s | 36MB, single binary — confirmed Pattern A |
-| mutagen | 56MB, file sync tool |
-| pandoc | 33MB, FHS layout — confirmed Pattern E (bin/ + share/man/) |
-| pwsh | 74MB, .NET runtime + many DLLs |
-| terraform | HashiCorp zip, single binary — confirmed Pattern A |
-| terramate | 45MB, single binary |
-| tinygo | 56MB, compiler toolchain |
-| ffmpeg | Special: uses separate bare binary downloads |
-| chromedriver | Chrome-versioned zip, single binary |
-| arc, atomicparsley, comrak, fish, git, gitea, jq, kind, shfmt | Bare binaries only (no archives to inspect) |
+| terramate | 45MB, single binary (assumed Pattern A like goreleaser tools) |
+| ffmpeg | Special: bare binaries named by OS-arch |
+| chromedriver | Chrome-versioned zip, single binary (Pattern A) |
+| arc, atomicparsley, comrak, fish, git, gitea, jq, kind, shfmt | Bare binaries only |
 | crabz | Archive contains source code, not binary |
-| vim-* plugins | Git clone only, no binary |
+| vim-* plugins (14 packages) | Git clone only, no binary |
 | aliasman, serviceman, duckdns.sh | Source-only releases |
 
 ### Emerging Patterns
