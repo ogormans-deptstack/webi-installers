@@ -114,9 +114,7 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 - [-] pg-essentials — meta-package
 - [-] zig.vim — gittag source, 0 raw data
 
-### Live Missing — Go-Only (16)
-- [-] node-official — Go split, not in live cache
-- [-] node-unofficial — Go split, not in live cache
+### Live Missing — Go-Only (14)
 - [-] pg — Go alias, live uses postgres
 - [-] ripgrep — Go alias, live uses rg
 - [-] rust.vim — symlink to vim-rust
