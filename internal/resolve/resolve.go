@@ -99,10 +99,10 @@ func Best(dists []Dist, q Query) *Match {
 		}
 
 		// Arch filter (including compat arches).
-		// Empty arch or ANYARCH means "universal/platform-agnostic" —
+		// Empty arch, ANYARCH, or "*" means "universal/platform-agnostic" —
 		// accept it but rank it lower than an exact match.
 		aRank, archOK := archRank[d.Arch]
-		if !archOK && (d.Arch == "" || d.Arch == string(buildmeta.ArchAny)) {
+		if !archOK && (d.Arch == "" || d.Arch == "*" || d.Arch == string(buildmeta.ArchAny)) {
 			// Universal binary — rank after all specific arches.
 			aRank = len(compatArches)
 			archOK = true
@@ -117,7 +117,13 @@ func Best(dists []Dist, q Query) *Match {
 		}
 
 		// Format filter.
+		// Empty format means bare binary — accept as last resort.
 		fRank, formatOK := formatRank[d.Format]
+		if !formatOK && d.Format == "" {
+			// Bare binary — rank after all explicit formats.
+			fRank = len(q.Formats)
+			formatOK = true
+		}
 		if !formatOK && len(q.Formats) > 0 {
 			continue
 		}
