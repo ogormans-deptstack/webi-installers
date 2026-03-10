@@ -717,7 +717,9 @@ func expandNodeFile(pkg, version, channel, date string, lts bool, baseURL, file 
 	case "msi":
 		formats = []string{".msi"}
 	case "exe":
-		formats = []string{".exe"}
+		// Node.js "exe" index entry doesn't correspond to a real download.
+		// The MSI installer is the actual Windows installer; skip exe.
+		return nil
 	case "7z":
 		formats = []string{".7z"}
 	case "":

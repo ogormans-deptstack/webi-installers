@@ -159,7 +159,7 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 - [-] hugo-extended — 14 extras: non-extended assets leaking in; keep as-is for now
 - [x] kubectx — asset_filter splits shared release
 - [x] kubens — asset_filter splits shared release
-- [ ] node — 1 extra: `.exe` bare binary naming difference
+- [x] node — nodedist "exe" format code doesn't map to a real file; skipped
 - [ ] ollama — 2 extras: `Ollama-darwin.zip` (case difference?)
 - [ ] uuidv7 — 16 extras: exotic arches (thumbeb, armeb, riscv32)
 - [ ] yq — 1 extra: naming difference
