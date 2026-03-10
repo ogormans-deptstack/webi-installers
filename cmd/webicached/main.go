@@ -1455,6 +1455,7 @@ func isMetaAsset(name string) bool {
 	for _, contains := range []string{
 		"checksums", "sha256sum", "sha512sum",
 		"buildable-artifact",
+		"man_page_only", ".LICENSE", ".README",
 	} {
 		if strings.Contains(lower, contains) {
 			return true

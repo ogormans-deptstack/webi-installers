@@ -160,10 +160,12 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 - [x] kubectx — asset_filter splits shared release
 - [x] kubens — asset_filter splits shared release
 - [x] node — nodedist "exe" format code doesn't map to a real file; skipped
-- [ ] ollama — 2 extras: `Ollama-darwin.zip` (case difference?)
-- [ ] uuidv7 — 16 extras: exotic arches (thumbeb, armeb, riscv32)
-- [ ] yq — 1 extra: naming difference
-- [ ] ffmpeg — 21 extras: many platform/format combinations
+- [x] ollama — Ollama-darwin.zip tagged as installer; .tgz filename
+      differs from live's .tar.gz but maps to same format
+- [-] uuidv7 — exotic arches correctly classified; resolver filters by request
+- [x] yq — man_page_only now caught by isMetaAsset
+- [x] ffmpeg — asset_filter=ffmpeg excludes ffprobe/ffplay; .LICENSE/.README
+      now caught by isMetaAsset
 
 ### Source/Naming Diffs
 - [-] aliasman — source tarball naming differences (GitHub archive format)

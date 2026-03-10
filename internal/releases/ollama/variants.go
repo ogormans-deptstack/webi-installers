@@ -19,5 +19,9 @@ func TagVariants(assets []storage.Asset) {
 				assets[i].Variants = append(assets[i].Variants, v)
 			}
 		}
+		// Ollama-darwin.zip (capital O) is the macOS .app bundle.
+		if strings.HasPrefix(assets[i].Filename, "Ollama-") {
+			assets[i].Variants = append(assets[i].Variants, "installer")
+		}
 	}
 }
