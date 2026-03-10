@@ -507,22 +507,25 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 		// Source archives for packages with no binary assets.
 		// These are installable on any POSIX system (shell scripts, etc.).
 		//
-		// GitHub's tarball/zipball URLs (api.github.com/repos/.../tarball/TAG)
-		// redirect to codeload.github.com which serves the archive with a
-		// Content-Disposition filename like: Owner-Repo-ShortHash.tar.gz
-		// The extracted directory uses the same name, which install scripts
-		// depend on for globbing (e.g. mv ./*aliasman*/ ...).
+		// GitHub has two archive URL formats:
+		//   legacy:  codeload.github.com/{owner}/{repo}/legacy.tar.gz/refs/tags/{tag}
+		//            → filename: Owner-Repo-Tag-0-gHash.tar.gz
+		//            → extracts: Owner-Repo-Hash/
+		//   current: codeload.github.com/{owner}/{repo}/tar.gz/refs/tags/{tag}
+		//            → filename: repo-version.tar.gz
+		//            → extracts: repo-version/
 		//
-		// We construct the codeload URL directly (deterministic) and use
-		// Owner-Repo-Tag as the filename. The actual extracted directory
-		// will be Owner-Repo-ShortHash but the download URL resolves the same.
+		// The API's tarball_url/zipball_url redirect to the legacy format.
+		// We use the current format: cleaner names, consistent directory.
 		if len(rel.Assets) == 0 {
-			owner, repo := conf.Owner, conf.Repo
+			repo := conf.Repo
 			tag := rel.TagName
+			// Strip leading "v" for the version used in the filename/dir.
+			tagVer := strings.TrimPrefix(tag, "v")
 			if rel.TarballURL != "" {
-				dlURL := fmt.Sprintf("https://codeload.github.com/%s/%s/legacy.tar.gz/refs/tags/%s", owner, repo, tag)
+				dlURL := fmt.Sprintf("https://github.com/%s/%s/archive/refs/tags/%s.tar.gz", conf.Owner, repo, tag)
 				assets = append(assets, storage.Asset{
-					Filename: owner + "-" + repo + "-" + tag + ".tar.gz",
+					Filename: repo + "-" + tagVer + ".tar.gz",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
@@ -533,9 +536,9 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 				})
 			}
 			if rel.ZipballURL != "" {
-				dlURL := fmt.Sprintf("https://codeload.github.com/%s/%s/legacy.zip/refs/tags/%s", owner, repo, tag)
+				dlURL := fmt.Sprintf("https://github.com/%s/%s/archive/refs/tags/%s.zip", conf.Owner, repo, tag)
 				assets = append(assets, storage.Asset{
-					Filename: owner + "-" + repo + "-" + tag + ".zip",
+					Filename: repo + "-" + tagVer + ".zip",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
