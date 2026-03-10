@@ -23,6 +23,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/webinstall/webi-installers/internal/classify"
 	"github.com/webinstall/webi-installers/internal/lexver"
@@ -64,6 +65,8 @@ func main() {
 	flag.Parse()
 	filterPkgs := flag.Args()
 
+	totalStart := time.Now()
+
 	// Find the most recent month directory in each cache.
 	liveMonth := findLatestMonth(*liveDir)
 	goMonth := findLatestMonth(*goDir)
@@ -78,6 +81,7 @@ func main() {
 	}
 
 	// Discover all packages across both caches.
+	discoverStart := time.Now()
 	allPkgs := discoverPackages(livePath, goPath)
 	if len(filterPkgs) > 0 {
 		nameSet := make(map[string]bool, len(filterPkgs))
@@ -92,19 +96,24 @@ func main() {
 		}
 		allPkgs = filtered
 	}
+	log.Printf("discovered %d packages in %s", len(allPkgs), time.Since(discoverStart))
 
+	compareStart := time.Now()
 	var diffs []packageDiff
 	for _, pkg := range allPkgs {
 		d := compare(livePath, goPath, pkg, *latest, *windowed)
 		categorize(&d)
 		diffs = append(diffs, d)
 	}
+	log.Printf("compared %d packages in %s", len(diffs), time.Since(compareStart))
 
 	if *summary {
 		printSummary(diffs)
 	} else {
 		printDetails(diffs, *diffsOnly)
 	}
+
+	log.Printf("total: %s", time.Since(totalStart))
 }
 
 func findLatestMonth(dir string) string {

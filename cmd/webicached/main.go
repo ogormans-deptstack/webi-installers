@@ -139,6 +139,7 @@ func (wc *WebiCache) Run(filterPkgs []string) {
 	}
 
 	log.Printf("refreshing %d packages", len(packages))
+	runStart := time.Now()
 
 	for _, pkg := range packages {
 		if alias := pkg.conf.Extra["alias_of"]; alias != "" {
@@ -149,6 +150,8 @@ func (wc *WebiCache) Run(filterPkgs []string) {
 			log.Printf("  ERROR %s: %v", pkg.name, err)
 		}
 	}
+
+	log.Printf("refreshed %d packages in %s", len(packages), time.Since(runStart))
 }
 
 type pkgConf struct {
@@ -186,17 +189,21 @@ func discover(dir string) ([]pkgConf, error) {
 // refreshPackage does the full pipeline for one package:
 // fetch raw → classify → write to fsstore.
 func (wc *WebiCache) refreshPackage(ctx context.Context, pkg pkgConf) error {
+	pkgStart := time.Now()
 	name := pkg.name
 	conf := pkg.conf
 
 	// Step 1: Fetch raw upstream data to rawcache (unless -no-fetch).
 	if !wc.NoFetch {
+		fetchStart := time.Now()
 		if err := wc.fetchRaw(ctx, pkg); err != nil {
 			return fmt.Errorf("fetch: %w", err)
 		}
+		log.Printf("  %s: fetch %s", name, time.Since(fetchStart))
 	}
 
 	// Step 2: Classify raw data into assets.
+	classifyStart := time.Now()
 	d, err := rawcache.Open(filepath.Join(wc.RawDir, name))
 	if err != nil {
 		return fmt.Errorf("rawcache open: %w", err)
@@ -212,8 +219,10 @@ func (wc *WebiCache) refreshPackage(ctx context.Context, pkg pkgConf) error {
 
 	// Step 3: Apply config transforms.
 	assets = applyConfig(assets, conf)
+	classifyDur := time.Since(classifyStart)
 
 	// Step 4: Write to fsstore.
+	writeStart := time.Now()
 	tx, err := wc.Store.BeginRefresh(ctx, name)
 	if err != nil {
 		return fmt.Errorf("begin refresh: %w", err)
@@ -225,8 +234,10 @@ func (wc *WebiCache) refreshPackage(ctx context.Context, pkg pkgConf) error {
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
+	writeDur := time.Since(writeStart)
 
-	log.Printf("  %s: %d assets", name, len(assets))
+	log.Printf("  %s: %d assets (classify %s, write %s, total %s)",
+		name, len(assets), classifyDur, writeDur, time.Since(pkgStart))
 	return nil
 }
 
