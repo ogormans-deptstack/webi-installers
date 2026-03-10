@@ -582,43 +582,32 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 		// These are installable on any POSIX system (shell scripts, etc.).
 		//
 		// GitHub has two archive URL formats:
-		//   legacy:  codeload.github.com/{owner}/{repo}/legacy.tar.gz/refs/tags/{tag}
-		//            → filename: Owner-Repo-Tag-0-gHash.tar.gz
-		//            → extracts: Owner-Repo-Hash/
-		//   current: codeload.github.com/{owner}/{repo}/tar.gz/refs/tags/{tag}
-		//            → filename: repo-version.tar.gz
-		//            → extracts: repo-version/
-		//
-		// The API's tarball_url/zipball_url redirect to the legacy format.
-		// We use the current format: cleaner names, consistent directory.
+		// Releases with no uploaded assets are source-only — use the
+		// API-provided tarball/zipball URLs. These can also be installed
+		// via `git clone --branch <tag>` as a fallback.
 		if len(rel.Assets) == 0 {
-			repo := conf.Repo
 			tag := rel.TagName
-			// Strip leading "v" for the version used in the filename/dir.
-			tagVer := strings.TrimPrefix(tag, "v")
 			if rel.TarballURL != "" {
-				dlURL := fmt.Sprintf("https://github.com/%s/%s/archive/refs/tags/%s.tar.gz", conf.Owner, repo, tag)
 				assets = append(assets, storage.Asset{
-					Filename: repo + "-" + tagVer + ".tar.gz",
+					Filename: tag + ".tar.gz",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
 					Arch:     "*",
 					Format:   ".tar.gz",
-					Download: dlURL,
+					Download: rel.TarballURL,
 					Date:     date,
 				})
 			}
 			if rel.ZipballURL != "" {
-				dlURL := fmt.Sprintf("https://github.com/%s/%s/archive/refs/tags/%s.zip", conf.Owner, repo, tag)
 				assets = append(assets, storage.Asset{
-					Filename: repo + "-" + tagVer + ".zip",
+					Filename: tag + ".zip",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
 					Arch:     "*",
 					Format:   ".zip",
-					Download: dlURL,
+					Download: rel.ZipballURL,
 					Date:     date,
 				})
 			}
