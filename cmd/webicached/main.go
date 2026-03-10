@@ -230,13 +230,21 @@ func (wc *WebiCache) refreshPackage(ctx context.Context, pkg pkgConf) error {
 	return nil
 }
 
-// applyConfig applies version prefix stripping and exclude filters.
+// applyConfig applies asset_filter, exclude, and version prefix stripping.
 func applyConfig(assets []storage.Asset, conf *installerconf.Conf) []storage.Asset {
+	filter := strings.ToLower(conf.AssetFilter)
 	excludes := conf.Exclude
 	prefixes := conf.VersionPrefixes
 
 	var out []storage.Asset
 	for _, a := range assets {
+		lower := strings.ToLower(a.Filename)
+
+		// Include filter: asset must contain this substring.
+		if filter != "" && !strings.Contains(lower, filter) {
+			continue
+		}
+
 		// Exclude filter.
 		skip := false
 		for _, ex := range excludes {

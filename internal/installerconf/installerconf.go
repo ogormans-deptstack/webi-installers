@@ -88,6 +88,11 @@ type Conf struct {
 	// are skipped entirely (not stored).
 	Exclude []string
 
+	// AssetFilter is a substring that asset filenames must contain.
+	// Used when multiple packages share a GitHub release (e.g.
+	// kubectx/kubens) to select only the relevant assets.
+	AssetFilter string
+
 	// Variants documents known build variant names for this package.
 	// Whitespace-delimited. This is a human-readable cue — actual
 	// variant detection logic lives in Go code per-package.
@@ -147,6 +152,8 @@ func Read(path string) (*Conf, error) {
 		c.Exclude = strings.Fields(v)
 	}
 
+	c.AssetFilter = raw["asset_filter"]
+
 	if v := raw["variants"]; v != "" {
 		c.Variants = strings.Fields(v)
 	}
@@ -156,7 +163,8 @@ func Read(path string) (*Conf, error) {
 		"source": true, "owner": true, "repo": true,
 		"base_url": true, "url": true,
 		"tag_prefix": true, "version_prefix": true, "version_prefixes": true,
-		"exclude": true, "asset_exclude": true, "variants": true,
+		"exclude": true, "asset_exclude": true, "asset_filter": true,
+		"variants": true,
 	}
 	for k, v := range raw {
 		if !known[k] {

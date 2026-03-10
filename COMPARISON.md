@@ -157,8 +157,8 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 - [x] git — busybox and pdbs-for-git tagged as variants
 - [-] hugo — 1 extra: `Linux-64bit.tar.gz` (old naming); keep as-is for now
 - [-] hugo-extended — 14 extras: non-extended assets leaking in; keep as-is for now
-- [ ] kubectx — 14 extras: kubens assets from shared GitHub release
-- [ ] kubens — 14 extras: kubectx assets from shared release
+- [x] kubectx — asset_filter splits shared release
+- [x] kubens — asset_filter splits shared release
 - [ ] node — 1 extra: `.exe` bare binary naming difference
 - [ ] ollama — 2 extras: `Ollama-darwin.zip` (case difference?)
 - [ ] uuidv7 — 16 extras: exotic arches (thumbeb, armeb, riscv32)
@@ -177,13 +177,12 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 - [-] ffmpeg — Go has older, live has newer
 
 ### Cross-Package Issues
-- [ ] kubectx/kubens — shared GitHub release, assets for both packages appear
-      in each. Need to split by asset name prefix.
+- [x] kubectx/kubens — resolved via asset_filter in releases.conf
 
 ## Remaining Action Items
 
 1. ~~**hugo-extended exclude**~~: Deferred — keep matching Node.js behavior for now
-2. **kubectx/kubens split**: Filter assets by name prefix in shared release
+2. ~~**kubectx/kubens split**~~: Resolved — asset_filter in releases.conf
 3. ~~**bun baseline in legacy**~~: Resolved — baseline is legacy amd64,
    non-baseline tagged as v3 variant
 4. **Re-fetch with GITHUB_TOKEN**: Fix rate-limited/stale packages
