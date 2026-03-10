@@ -27,13 +27,18 @@ import (
 	"github.com/webinstall/webi-installers/internal/installerconf"
 	"github.com/webinstall/webi-installers/internal/lexver"
 	"github.com/webinstall/webi-installers/internal/rawcache"
+	"github.com/webinstall/webi-installers/internal/releases/chromedist"
 	"github.com/webinstall/webi-installers/internal/releases/flutterdist"
+	"github.com/webinstall/webi-installers/internal/releases/gitea"
 	"github.com/webinstall/webi-installers/internal/releases/github"
 	"github.com/webinstall/webi-installers/internal/releases/githubish"
+	"github.com/webinstall/webi-installers/internal/releases/gittag"
 	"github.com/webinstall/webi-installers/internal/releases/golang"
+	"github.com/webinstall/webi-installers/internal/releases/gpgdist"
 	"github.com/webinstall/webi-installers/internal/releases/hashicorp"
 	"github.com/webinstall/webi-installers/internal/releases/iterm2dist"
 	"github.com/webinstall/webi-installers/internal/releases/juliadist"
+	"github.com/webinstall/webi-installers/internal/releases/mariadbdist"
 	"github.com/webinstall/webi-installers/internal/releases/nodedist"
 	"github.com/webinstall/webi-installers/internal/releases/zigdist"
 )
@@ -78,6 +83,12 @@ func main() {
 	log.Printf("found %d packages", len(packages))
 
 	for _, pkg := range packages {
+		// Aliases share cache with their target — skip fetching.
+		if alias := pkg.conf.Get("alias_of"); alias != "" {
+			log.Printf("  %s: alias of %s, skipping", pkg.name, alias)
+			continue
+		}
+
 		log.Printf("fetching %s...", pkg.name)
 		var err error
 		switch pkg.conf.Source() {
@@ -97,6 +108,16 @@ func main() {
 			err = fetchHashiCorp(ctx, client, *cacheDir, pkg.name, pkg.conf)
 		case "juliadist":
 			err = fetchJulia(ctx, client, *cacheDir, pkg.name)
+		case "gittag":
+			err = fetchGitTag(ctx, *cacheDir, pkg.name, pkg.conf)
+		case "gitea":
+			err = fetchGitea(ctx, client, *cacheDir, pkg.name, pkg.conf)
+		case "chromedist":
+			err = fetchChrome(ctx, client, *cacheDir, pkg.name)
+		case "gpgdist":
+			err = fetchGPG(ctx, client, *cacheDir, pkg.name)
+		case "mariadbdist":
+			err = fetchMariaDB(ctx, client, *cacheDir, pkg.name)
 		default:
 			log.Printf("  %s: unknown source %q, skipping", pkg.name, pkg.conf.Source())
 			continue
@@ -549,6 +570,266 @@ func fetchJulia(ctx context.Context, client *http.Client, cacheRoot, pkgName str
 			}
 
 			if rel.Stable {
+				if latest == "" || lexver.Compare(lexver.Parse(tag), lexver.Parse(latest)) > 0 {
+					latest = tag
+				}
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
+	return nil
+}
+
+func fetchGitTag(ctx context.Context, cacheRoot, pkgName string, conf *installerconf.Conf) error {
+	gitURL := conf.Get("url")
+	if gitURL == "" {
+		return fmt.Errorf("missing url in releases.conf")
+	}
+
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	repoDir := filepath.Join(cacheRoot, "_repos")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for batch, err := range gittag.Fetch(ctx, gitURL, repoDir) {
+		if err != nil {
+			return fmt.Errorf("gittag %s: %w", pkgName, err)
+		}
+		for _, entry := range batch {
+			tag := entry.Version
+			if tag == "" {
+				tag = "HEAD-" + entry.CommitHash
+			}
+			data, err := json.Marshal(entry)
+			if err != nil {
+				return fmt.Errorf("gittag marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			if entry.GitTag != "" && entry.GitTag != "HEAD" {
+				if latest == "" || lexver.Compare(lexver.Parse(tag), lexver.Parse(latest)) > 0 {
+					latest = tag
+				}
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
+	return nil
+}
+
+func fetchGitea(ctx context.Context, client *http.Client, cacheRoot, pkgName string, conf *installerconf.Conf) error {
+	baseURL := conf.Get("base_url")
+	owner := conf.Get("owner")
+	repo := conf.Get("repo")
+
+	if baseURL == "" || owner == "" || repo == "" {
+		return fmt.Errorf("missing base_url, owner, or repo in releases.conf")
+	}
+
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for batch, err := range gitea.Fetch(ctx, client, baseURL, owner, repo, nil) {
+		if err != nil {
+			return fmt.Errorf("gitea %s/%s: %w", owner, repo, err)
+		}
+		for _, rel := range batch {
+			if rel.Draft {
+				continue
+			}
+
+			tag := rel.TagName
+			data, err := json.Marshal(rel)
+			if err != nil {
+				return fmt.Errorf("gitea marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			if latest == "" && !rel.Prerelease {
+				latest = tag
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
+	return nil
+}
+
+func fetchChrome(ctx context.Context, client *http.Client, cacheRoot, pkgName string) error {
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for batch, err := range chromedist.Fetch(ctx, client) {
+		if err != nil {
+			return fmt.Errorf("chromedist: %w", err)
+		}
+		for _, ver := range batch {
+			tag := ver.Version
+			data, err := json.Marshal(ver)
+			if err != nil {
+				return fmt.Errorf("chromedist marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			if latest == "" || lexver.Compare(lexver.Parse(tag), lexver.Parse(latest)) > 0 {
+				latest = tag
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
+	return nil
+}
+
+func fetchGPG(ctx context.Context, client *http.Client, cacheRoot, pkgName string) error {
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for batch, err := range gpgdist.Fetch(ctx, client) {
+		if err != nil {
+			return fmt.Errorf("gpgdist: %w", err)
+		}
+		for _, entry := range batch {
+			tag := entry.Version
+			data, err := json.Marshal(entry)
+			if err != nil {
+				return fmt.Errorf("gpgdist marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			if latest == "" || lexver.Compare(lexver.Parse(tag), lexver.Parse(latest)) > 0 {
+				latest = tag
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
+	return nil
+}
+
+func fetchMariaDB(ctx context.Context, client *http.Client, cacheRoot, pkgName string) error {
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for batch, err := range mariadbdist.Fetch(ctx, client) {
+		if err != nil {
+			return fmt.Errorf("mariadbdist: %w", err)
+		}
+		for _, rel := range batch {
+			tag := rel.ReleaseID
+			data, err := json.Marshal(rel)
+			if err != nil {
+				return fmt.Errorf("mariadbdist marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			isStable := rel.MajorStatus == "Stable"
+			if isStable {
 				if latest == "" || lexver.Compare(lexver.Parse(tag), lexver.Parse(latest)) > 0 {
 					latest = tag
 				}
