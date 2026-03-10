@@ -3,6 +3,15 @@ install-*.sh
 install-*.bat
 install-*.ps1
 
+# Go build outputs (from go run/build in repo root)
+/classify
+/e2etest
+/fetchraw
+/inspect
+/uaparse
+/zigtest
+/distributables.csv
+
 # local config
 .env.*
 *.env
