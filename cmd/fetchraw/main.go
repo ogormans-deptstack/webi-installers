@@ -1,6 +1,6 @@
-// Command fetchraw fetches complete release histories from upstream APIs
-// and merges them into rawcache. Safe to run repeatedly — existing releases
-// are skipped, new ones are added, _latest is updated.
+// Command fetchraw fetches release histories from upstream APIs and
+// merges them into rawcache. Safe to run repeatedly — unchanged releases
+// are skipped, new/changed ones are recorded in the audit log.
 //
 // Usage:
 //
@@ -27,12 +27,17 @@ import (
 	"github.com/webinstall/webi-installers/internal/releases/nodedist"
 )
 
+type pkg struct {
+	name string
+	fn   func(ctx context.Context) error
+}
+
 func main() {
 	cacheDir := flag.String("cache", "_cache/raw", "root directory for raw cache")
 	token := flag.String("token", os.Getenv("GITHUB_TOKEN"), "GitHub API token")
 	flag.Parse()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -41,25 +46,98 @@ func main() {
 		auth = &githubish.Auth{Token: *token}
 	}
 
-	packages := []struct {
-		name string
-		fn   func(ctx context.Context) error
-	}{
-		{"node-official", func(ctx context.Context) error {
-			return fetchNodeDist(ctx, client, *cacheDir, "node-official", "https://nodejs.org/download/release")
-		}},
-		{"node-unofficial", func(ctx context.Context) error {
-			return fetchNodeDist(ctx, client, *cacheDir, "node-unofficial", "https://unofficial-builds.nodejs.org/download/release")
-		}},
-		{"hugo", func(ctx context.Context) error {
-			return fetchGitHub(ctx, client, *cacheDir, "hugo", "gohugoio", "hugo", "", auth)
-		}},
-		{"caddy", func(ctx context.Context) error {
-			return fetchGitHub(ctx, client, *cacheDir, "caddy", "caddyserver", "caddy", "", auth)
-		}},
-		{"monorel", func(ctx context.Context) error {
-			return fetchGitHub(ctx, client, *cacheDir, "monorel", "therootcompany", "golib", "tools/monorel/", auth)
-		}},
+	gh := func(name, owner, repo string) pkg {
+		return pkg{name, func(ctx context.Context) error {
+			return fetchGitHub(ctx, client, *cacheDir, name, owner, repo, "", auth)
+		}}
+	}
+	ghMono := func(name, owner, repo, prefix string) pkg {
+		return pkg{name, func(ctx context.Context) error {
+			return fetchGitHub(ctx, client, *cacheDir, name, owner, repo, prefix, auth)
+		}}
+	}
+	nodeDist := func(name, baseURL string) pkg {
+		return pkg{name, func(ctx context.Context) error {
+			return fetchNodeDist(ctx, client, *cacheDir, name, baseURL)
+		}}
+	}
+
+	packages := []pkg{
+		// Node.js
+		nodeDist("node-official", "https://nodejs.org/download/release"),
+		nodeDist("node-unofficial", "https://unofficial-builds.nodejs.org/download/release"),
+
+		// GitHub packages (alphabetical)
+		gh("arc", "mholt", "archiver"),
+		gh("atomicparsley", "wez", "atomicparsley"),
+		gh("bat", "sharkdp", "bat"),
+		gh("bun", "oven-sh", "bun"),
+		gh("caddy", "caddyserver", "caddy"),
+		gh("cilium", "cilium", "cilium-cli"),
+		gh("cmake", "Kitware", "CMake"),
+		gh("comrak", "kivikakk", "comrak"),
+		gh("crabz", "sstadick", "crabz"),
+		gh("curlie", "rs", "curlie"),
+		gh("dashcore", "dashpay", "dash"),
+		gh("dashmsg", "dashhive", "dashmsg"),
+		gh("delta", "dandavison", "delta"),
+		gh("deno", "denoland", "deno"),
+		gh("dotenv", "therootcompany", "dotenv"),
+		gh("dotenv-linter", "dotenv-linter", "dotenv-linter"),
+		gh("fd", "sharkdp", "fd"),
+		gh("ffmpeg", "eugeneware", "ffmpeg-static"),
+		gh("ffuf", "ffuf", "ffuf"),
+		gh("fish", "fish-shell", "fish-shell"),
+		gh("fzf", "junegunn", "fzf"),
+		gh("gh", "cli", "cli"),
+		gh("git", "git-for-windows", "git"),
+		gh("gitdeploy", "therootcompany", "gitdeploy"),
+		gh("gitea", "go-gitea", "gitea"),
+		gh("goreleaser", "goreleaser", "goreleaser"),
+		gh("gprox", "creedasaurus", "gprox"),
+		gh("grype", "anchore", "grype"),
+		gh("hexyl", "sharkdp", "hexyl"),
+		gh("hugo", "gohugoio", "hugo"),
+		gh("jq", "stedolan", "jq"),
+		gh("k9s", "derailed", "k9s"),
+		gh("keypairs", "therootcompany", "keypairs"),
+		gh("kind", "kubernetes-sigs", "kind"),
+		gh("koji", "cococonscious", "koji"),
+		gh("kubectx", "ahmetb", "kubectx"),
+		gh("lf", "gokcehan", "lf"),
+		gh("lsd", "lsd-rs", "lsd"),
+		gh("mutagen", "mutagen-io", "mutagen"),
+		gh("ollama", "jmorganca", "ollama"),
+		gh("ots", "emdneto", "otsgo"),
+		gh("pandoc", "jgm", "pandoc"),
+		gh("pg", "bnnanet", "postgresql-releases"),
+		gh("pwsh", "powershell", "powershell"),
+		gh("rclone", "rclone", "rclone"),
+		gh("ripgrep", "BurntSushi", "ripgrep"),
+		gh("runzip", "therootcompany", "runzip"),
+		gh("sass", "sass", "dart-sass"),
+		gh("sclient", "therootcompany", "sclient"),
+		gh("sd", "chmln", "sd"),
+		gh("serviceman", "bnnanet", "serviceman"),
+		gh("shellcheck", "koalaman", "shellcheck"),
+		gh("shfmt", "mvdan", "sh"),
+		gh("sqlc", "sqlc-dev", "sqlc"),
+		gh("sqlpkg", "nalgeon", "sqlpkg-cli"),
+		gh("sttr", "abhimanyu003", "sttr"),
+		gh("syncthing", "syncthing", "syncthing"),
+		gh("terramate", "terramate-io", "terramate"),
+		gh("tinygo", "tinygo-org", "tinygo"),
+		gh("trip", "fujiapple852", "trippy"),
+		gh("uuidv7", "coolaj86", "uuidv7"),
+		gh("watchexec", "watchexec", "watchexec"),
+		gh("xcaddy", "caddyserver", "xcaddy"),
+		gh("xsv", "BurntSushi", "xsv"),
+		gh("xz", "therootcompany", "xz-static"),
+		gh("yq", "mikefarah", "yq"),
+		gh("zoxide", "ajeetdsouza", "zoxide"),
+
+		// Monorepo
+		ghMono("monorel", "therootcompany", "golib", "tools/monorel/"),
 	}
 
 	args := flag.Args()
@@ -68,10 +146,7 @@ func main() {
 		for _, a := range args {
 			nameSet[a] = true
 		}
-		var filtered []struct {
-			name string
-			fn   func(ctx context.Context) error
-		}
+		var filtered []pkg
 		for _, p := range packages {
 			if nameSet[p.name] {
 				filtered = append(filtered, p)
@@ -80,13 +155,12 @@ func main() {
 		packages = filtered
 	}
 
-	for _, pkg := range packages {
-		log.Printf("fetching %s...", pkg.name)
-		if err := pkg.fn(ctx); err != nil {
-			log.Printf("  ERROR: %s: %v", pkg.name, err)
+	for _, p := range packages {
+		log.Printf("fetching %s...", p.name)
+		if err := p.fn(ctx); err != nil {
+			log.Printf("  ERROR: %s: %v", p.name, err)
 			continue
 		}
-		log.Printf("  %s done", pkg.name)
 	}
 }
 
@@ -96,7 +170,7 @@ func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkgName,
 		return err
 	}
 
-	var added, skipped int
+	var added, changed, skipped int
 	var latest string
 	for batch, err := range nodedist.Fetch(ctx, client, baseURL) {
 		if err != nil {
@@ -104,22 +178,24 @@ func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkgName,
 		}
 		for _, entry := range batch {
 			tag := entry.Version
-
-			if d.Has(tag) {
-				skipped++
-				continue
-			}
-
 			data, err := json.Marshal(entry)
 			if err != nil {
 				return fmt.Errorf("%s marshal %s: %w", pkgName, tag, err)
 			}
-			if err := d.Put(tag, data); err != nil {
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
 				return err
 			}
-			added++
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
 
-			// Node dist returns newest first.
 			if latest == "" {
 				latest = tag
 			}
@@ -130,7 +206,7 @@ func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkgName,
 		return err
 	}
 
-	log.Printf("  %s: %d added, %d skipped, latest=%s", pkgName, added, skipped, d.Latest())
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
 	return nil
 }
 
@@ -140,7 +216,7 @@ func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkgName, o
 		return err
 	}
 
-	var added, skipped int
+	var added, changed, skipped int
 	var latest string
 	for batch, err := range github.Fetch(ctx, client, owner, repo, auth) {
 		if err != nil {
@@ -153,8 +229,6 @@ func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkgName, o
 
 			tag := rel.TagName
 
-			// Monorepo: skip releases that don't match the prefix,
-			// strip the prefix from the tag for storage.
 			if tagPrefix != "" {
 				if !strings.HasPrefix(tag, tagPrefix) {
 					continue
@@ -162,21 +236,24 @@ func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkgName, o
 				tag = strings.TrimPrefix(tag, tagPrefix)
 			}
 
-			if d.Has(tag) {
-				skipped++
-				continue
-			}
-
 			data, err := json.Marshal(rel)
 			if err != nil {
 				return fmt.Errorf("marshal %s: %w", tag, err)
 			}
-			if err := d.Put(tag, data); err != nil {
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
 				return err
 			}
-			added++
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
 
-			// GitHub returns newest first; first non-prerelease is latest.
 			if latest == "" && !rel.Prerelease {
 				latest = tag
 			}
@@ -187,11 +264,10 @@ func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkgName, o
 		return err
 	}
 
-	log.Printf("  %s: %d added, %d skipped, latest=%s", pkgName, added, skipped, d.Latest())
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
 	return nil
 }
 
-// updateLatest sets _latest if the candidate is newer than the current value.
 func updateLatest(d *rawcache.Dir, candidate string) error {
 	if candidate == "" {
 		return nil

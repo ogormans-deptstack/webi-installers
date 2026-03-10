@@ -111,15 +111,42 @@ func (d *Dir) Read(tag string) ([]byte, error) {
 }
 
 // Put writes a release file to the active slot. The write is atomic
-// (temp file + rename). Also updates _latest if this tag is newer than
-// the current latest — but the caller is responsible for determining
-// ordering; Put always updates _latest unconditionally.
+// (temp file + rename).
 func (d *Dir) Put(tag string, data []byte) error {
 	active, err := d.activePath()
 	if err != nil {
 		return err
 	}
 	return atomicWrite(filepath.Join(active, tagToFilename(tag)), data)
+}
+
+// Merge writes a release to the active slot if it's new or changed.
+// Returns the action taken: "added", "changed", or "" (unchanged).
+// Logs the event to the audit log when something happens.
+func (d *Dir) Merge(tag string, data []byte) (string, error) {
+	log := d.openLog()
+	hash := ContentHash(data)
+
+	if d.Has(tag) {
+		existing, err := d.Read(tag)
+		if err != nil {
+			return "", err
+		}
+		if ContentHash(existing) == hash {
+			return "", nil // unchanged
+		}
+		if err := d.Put(tag, data); err != nil {
+			return "", err
+		}
+		log.Append(LogEntry{Tag: tag, Action: "changed", SHA256: hash})
+		return "changed", nil
+	}
+
+	if err := d.Put(tag, data); err != nil {
+		return "", err
+	}
+	log.Append(LogEntry{Tag: tag, Action: "added", SHA256: hash})
+	return "added", nil
 }
 
 // SetLatest updates the _latest marker in the active slot.
@@ -198,11 +225,12 @@ func (r *Refresh) Abort() {
 }
 
 // tagToFilename converts a tag to a safe filename.
-// Tags like "v0.145.0" become "v0.145.0.json".
+// Tags like "v0.145.0" become "v0.145.0". The raw cache stores opaque
+// bytes — no extension is assumed because upstream responses may be
+// JSON, CSV, XML, or bespoke formats.
 func tagToFilename(tag string) string {
 	// Replace path separators in case a tag contains slashes.
-	safe := strings.ReplaceAll(tag, "/", "_")
-	return safe + ".json"
+	return strings.ReplaceAll(tag, "/", "_")
 }
 
 // atomicWrite writes data to path via a temp file + rename.
