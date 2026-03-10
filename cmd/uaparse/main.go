@@ -239,19 +239,8 @@ func outputFixtures(entries []*PlatformEntry) {
 	fmt.Println("}")
 }
 
-// isMalformed checks for truncated or double-pasted UA strings.
-// These are real corruption from network issues, not manual typos.
+// isMalformed checks for genuinely corrupted UA strings (network truncation).
 func isMalformed(ua string) bool {
-	// Double-pasted: "webi/" appears in the middle (two UAs smashed together).
-	if i := strings.Index(ua, "webi/"); i > 0 && !strings.HasPrefix(ua, "webi/") {
-		return true
-	}
-
-	// Truncation mid-token: e.g. "webi/curl aarch64/unknowebi/curl ..."
-	if strings.Contains(ua, "unknowebi") {
-		return true
-	}
-
 	// Extremely short (less than 10 chars) suggests truncation.
 	if len(ua) < 10 {
 		return true
