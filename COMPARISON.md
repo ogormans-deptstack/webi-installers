@@ -152,11 +152,11 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 ### Remaining Go-Extra-Assets (need review)
 - [x] bun — baseline builds now serve as legacy amd64 (filename stripped,
       download URL kept); non-baseline tagged as v3 variant (excluded).
-- [ ] fish — 3 extras: linux .tar.xz binaries and source .tar.xz
+- [x] fish — source tarball tagged as variant; linux .tar.xz binaries are
+      correct (Node.js just doesn't have them yet)
 - [ ] git — 4 extras: MinGit-busybox .zip, pdbs .zip at latest version
-- [ ] hugo — 1 extra: `Linux-64bit.tar.gz` (old naming, should be excluded)
-- [ ] hugo-extended — 14 extras: non-extended hugo assets leaking in
-      (exclude filter not catching all variants)
+- [-] hugo — 1 extra: `Linux-64bit.tar.gz` (old naming); keep as-is for now
+- [-] hugo-extended — 14 extras: non-extended assets leaking in; keep as-is for now
 - [ ] kubectx — 14 extras: kubens assets from shared GitHub release
 - [ ] kubens — 14 extras: kubectx assets from shared release
 - [ ] node — 1 extra: `.exe` bare binary naming difference
@@ -182,8 +182,7 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 
 ## Remaining Action Items
 
-1. **hugo-extended exclude**: `exclude = extended` catches base hugo but
-   non-extended assets still appear in hugo-extended's output
+1. ~~**hugo-extended exclude**~~: Deferred — keep matching Node.js behavior for now
 2. **kubectx/kubens split**: Filter assets by name prefix in shared release
 3. ~~**bun baseline in legacy**~~: Resolved — baseline is legacy amd64,
    non-baseline tagged as v3 variant
