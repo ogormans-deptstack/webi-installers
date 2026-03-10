@@ -194,3 +194,152 @@ Expand-Archive ollama-windows-arm64.zip -DestinationPath $env:USERPROFILE\.local
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.local\opt\ollama" -Target "$env:USERPROFILE\.local\opt\ollama-$SORT_VER"
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.local\bin\ollama.exe" -Target "$env:USERPROFILE\.local\opt\ollama\bin\ollama.exe"
 ```
+
+---
+
+## Batch Inspection Results
+
+Inspected latest version of every downloadable package. Categorized by archive structure pattern.
+
+### Pattern A: Bare Binary in Archive (no subdirectory)
+
+Archive contains the binary (and maybe LICENSE/README) at the top level, no wrapper directory.
+
+| Package | Archive | Contents |
+|---------|---------|----------|
+| awless | `awless-linux-amd64.tar.gz` | `awless` |
+| bun | `bun-macos-x64.zip` | `bun` |
+| caddy | `caddy_2.9.1_linux_amd64.tar.gz` | `caddy`, LICENSE, README.md |
+| cilium | `cilium-linux-amd64.tar.gz` | `cilium` |
+| curlie | `curlie_1.8.2_linux_amd64.tar.gz` | `curlie`, LICENSE, README.md |
+| dashmsg | `dashmsg_0.9.1_Linux_x86_64.tar.gz` | `dashmsg`, LICENSE, README.md |
+| dotenv | `dotenv_1.0.0_linux_x86_64.tar.gz` | `dotenv`, LICENSE, README.md |
+| dotenv-linter | `dotenv-linter-linux-x86_64.tar.gz` | `dotenv-linter` |
+| ffuf | `ffuf_2.1.0_linux_amd64.tar.gz` | `ffuf`, CHANGELOG.md, LICENSE, README.md |
+| fzf | `fzf-0.70.0-linux_amd64.tar.gz` | `fzf` |
+| gitdeploy | `gitdeploy_0.9.4_linux_x86-64.tar.gz` | `gitdeploy`, LICENSE, README.md |
+| gprox | `gprox_0.3.3_linux_amd64.tar.gz` | `gprox`, LICENSE, README.md |
+| grype | `grype_0.99.1_linux_amd64.tar.gz` | `grype`, CHANGELOG.md, LICENSE, README.md |
+| hugo | `hugo_0.99.1_Linux-64bit.tar.gz` | `hugo`, LICENSE, README.md |
+| hugo-extended | `hugo_extended_0.99.1_Linux-64bit.tar.gz` | `hugo`, LICENSE, README.md |
+| keypairs | `keypairs_0.7.0-pre.2_linux_x86-64.tar.gz` | `keypairs`, LICENSE, README.md |
+| koji | `koji-x86_64-unknown-linux-musl.tar.gz` | `koji` |
+| lf | `lf-linux-amd64.tar.gz` | `lf` |
+| monorel | `monorel_0.6.6_Linux_x86_64.tar.gz` | `monorel`, README.md |
+| ots | `ots-v1.1.0-linux-amd64.tar.gz` | `ots`, LICENSE, README.md |
+| runzip | `runzip_1.0.1_linux_amd64.tar.gz` | `runzip`, LICENSE, README.md |
+| sclient | `sclient_1.5.1_linux_amd64.tar.xz` | `sclient`, LICENSE, README.md |
+| sqlc | `sqlc_1.9.0-beta1_linux_amd64.tar.gz` | `sqlc` |
+| sqlpkg | `sqlpkg-cli_0.3.0_linux_amd64.tar.gz` | `sqlpkg`, LICENSE, README.md |
+| sttr | `sttr_0.2.9_linux_amd64.tar.gz` | `sttr`, LICENSE, README.md |
+| uuidv7 | `uuidv7_v1.0.1-next_linux_amd64.tar.gz` | `uuidv7`, LICENSE, README.md |
+| xcaddy | `xcaddy_0.4.5_linux_amd64.tar.gz` | `xcaddy`, LICENSE, README.md |
+
+**Install pattern**: extract, move binary to `~/.local/opt/{pkg}-{ver}/bin/{binary}`, symlink.
+
+### Pattern B: Subdirectory with Binary Only
+
+Archive contains a version-named directory wrapping the binary and docs.
+
+| Package | Archive | Directory | Contents |
+|---------|---------|-----------|----------|
+| delta | tar.gz | `delta-{ver}-{triplet}/` | `delta`, LICENSE, README.md |
+| hexyl | tar.gz | `hexyl-{ver}-{triplet}/` | `hexyl`, CHANGELOG.md, LICENSE-*, README.md |
+| kubectx | tar.gz | flat | `kubens`, LICENSE |
+| kubens | tar.gz | flat | `kubens`, LICENSE |
+| pathman | tar.gz | bare name | `pathman-v0.6.0-linux-amd64_v1` (bare binary, no dir) |
+| shellcheck | tar.xz | `shellcheck-{ver}/` | `shellcheck`, LICENSE.txt, README.txt |
+| trip | tar.gz | `trippy-{ver}-{triplet}/` | `trip` |
+| watchexec | tar.xz | `watchexec-{ver}-{triplet}/` | `watchexec`, LICENSE, README.md, completions/, man page |
+| xsv | tar.gz | `xsv-{ver}-{triplet}/` | `xsv`, UNLICENSE, README.md |
+| yq | tar.gz | flat | `yq_linux_amd64` (binary named with platform suffix) |
+
+**Install pattern**: extract, find binary in subdirectory, move to opt, symlink.
+Note: `pathman` is just a bare binary named with the full release tag. `yq` binary is named with platform suffix — needs rename.
+
+### Pattern C: Subdirectory with Binary + Completions/Man Pages
+
+Archive includes shell completions and/or man pages alongside the binary.
+
+| Package | Archive | Completions | Man | Notes |
+|---------|---------|-------------|-----|-------|
+| bat | tar.gz | `autocomplete/` (dir exists but contents vary) | `bat.1` | |
+| fd | tar.gz | `autocomplete/{fd.fish,fd.bash,fd.ps1,_fd}` | `fd.1` | |
+| goreleaser | tar.gz | `completions/{.bash,.fish,.zsh}` | `manpages/goreleaser.1.gz` | |
+| lsd | tar.gz | `autocomplete/{_lsd,lsd.fish,_lsd.ps1,lsd.bash-completion}` | `lsd.1` | |
+| rg/ripgrep | tar.gz | `complete/{_rg.ps1,_rg,rg.fish,rg.bash}` | `doc/rg.1` | Also has doc/{FAQ,GUIDE,CHANGELOG}.md |
+| sd | tar.gz | `completions/{sd.bash,sd.fish,sd.elv,_sd,_sd.ps1}` | `sd.1` | |
+| watchexec | tar.xz | `completions/{bash,fish,zsh,powershell,nu,elvish}` | `watchexec.1` | |
+| zoxide | tar.gz | `completions/{zoxide.bash,.fish,.elv,.nu,.ts,_zoxide,_zoxide.ps1}` | `man/man1/zoxide*.1` | Most complete |
+
+**Install pattern**: extract, install binary, install completions to standard dirs, install man pages.
+
+### Pattern D: Subdirectory with Binary + Libraries
+
+Complex packages that bundle shared libraries alongside the binary.
+
+| Package | Archive | Layout |
+|---------|---------|--------|
+| ollama (Linux) | tar.zst | `bin/ollama` + `lib/ollama/{cuda_v12,cuda_v13,vulkan}/` (66 files) |
+| pg/postgres/psql | tar.gz | `psql-{ver}-{triplet}/bin/psql` + `lib/{libpq,libz,libzstd,...}.so` + `include/` (75 files) |
+| sass | tar.gz | `dart-sass/sass` (wrapper script) + `dart-sass/src/{dart,sass.snapshot}` |
+| syncthing | tar.gz | `syncthing-{triplet}-{ver}/syncthing` + `etc/{systemd,upstart,desktop,runit,...}/` (45 files) |
+| xz | tar.gz | `xz-{ver}-{triplet}/xz` + `xz-{ver}-{triplet}/unxz` (two binaries) |
+
+**Install pattern**: extract entire directory tree into opt, symlink binary.
+
+### Pattern E: FHS-like Layout (binary in bin/)
+
+Archive already follows `bin/` + `share/` layout.
+
+| Package | Archive | Layout |
+|---------|---------|--------|
+| gh | tar.gz | `gh_{ver}_{os}_{arch}/bin/gh` + `share/man/man1/*.1` (129 files of man pages) |
+| ollama (Linux) | tar.zst | `bin/ollama` + `lib/ollama/` |
+
+**Install pattern**: extract directly into opt (already correct layout).
+
+### Pattern F: Renamed Binary
+
+Binary in archive doesn't match expected binary name.
+
+| Package | Binary in Archive | Expected Name |
+|---------|-------------------|---------------|
+| pathman | `pathman-v0.6.0-linux-amd64_v1` | `pathman` |
+| yq | `yq_linux_amd64` | `yq` |
+
+### Packages Not Inspected (special/large/known)
+
+| Package | Reason |
+|---------|--------|
+| node, go, zig, flutter, julia | Well-known SDK layouts — documented elsewhere |
+| mariadb | Full database server — complex layout |
+| gpg | macOS-only .dmg (GnuPG for OS X) |
+| iterm2 | macOS-only .zip (.app bundle) |
+| cmake | 61MB, well-known layout (bin/ + share/ + doc/) |
+| dashcore | 58MB, cryptocurrency daemon + CLI tools |
+| deno | 34MB zip, single binary |
+| k9s | 36MB, single binary (goreleaser pattern) |
+| mutagen | 56MB, file sync tool |
+| pandoc | 33MB, academic document converter (bin/ + share/) |
+| pwsh | 74MB, .NET runtime + many DLLs |
+| terraform | HashiCorp zip, single binary |
+| terramate | 45MB, single binary |
+| tinygo | 56MB, compiler toolchain |
+| ffmpeg | Special: uses separate bare binary downloads |
+| chromedriver | Chrome-versioned zip, single binary |
+| arc, atomicparsley, comrak, fish, git, gitea, jq, kind, shfmt | Bare binaries only (no archives to inspect) |
+| crabz | Archive contains source code, not binary |
+| vim-* plugins | Git clone only, no binary |
+| aliasman, serviceman, duckdns.sh | Source-only releases |
+
+### Emerging Patterns
+
+1. **Most common**: Pattern A (bare binary + optional docs in archive) — ~28 packages
+2. **Rust tools** tend to use Pattern B/C: subdirectory named `{tool}-{ver}-{triplet}/` with completions
+3. **Go tools** (goreleaser-built) tend to use Pattern A: flat archive with binary + LICENSE + README
+4. **Completion directory naming varies**: `autocomplete/`, `completions/`, `complete/` — no standard
+5. **Completion file naming varies**: `_tool` (zsh), `tool.bash`/`tool.bash-completion`, `tool.fish`
+6. **Man page location varies**: `tool.1`, `doc/tool.1`, `manpages/tool.1.gz`, `man/man1/tool.1`
+7. **pathman and yq**: need binary rename during install
+8. **crabz**: classified archive is source code, not binary — classifier bug or mismatch
