@@ -2,6 +2,9 @@
 // merges them into rawcache. Safe to run repeatedly — unchanged releases
 // are skipped, new/changed ones are recorded in the audit log.
 //
+// Reads releases.conf files from package directories to discover what
+// to fetch. Adding a new package is just creating a conf file.
+//
 // Usage:
 //
 //	go run ./cmd/fetchraw -cache ./_cache/raw
@@ -17,9 +20,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/webinstall/webi-installers/internal/installerconf"
 	"github.com/webinstall/webi-installers/internal/lexver"
 	"github.com/webinstall/webi-installers/internal/rawcache"
 	"github.com/webinstall/webi-installers/internal/releases/github"
@@ -27,13 +32,9 @@ import (
 	"github.com/webinstall/webi-installers/internal/releases/nodedist"
 )
 
-type pkg struct {
-	name string
-	fn   func(ctx context.Context) error
-}
-
 func main() {
 	cacheDir := flag.String("cache", "_cache/raw", "root directory for raw cache")
+	confDir := flag.String("conf", ".", "root directory containing {pkg}/releases.conf files")
 	token := flag.String("token", os.Getenv("GITHUB_TOKEN"), "GitHub API token")
 	flag.Parse()
 
@@ -46,107 +47,20 @@ func main() {
 		auth = &githubish.Auth{Token: *token}
 	}
 
-	gh := func(name, owner, repo string) pkg {
-		return pkg{name, func(ctx context.Context) error {
-			return fetchGitHub(ctx, client, *cacheDir, name, owner, repo, "", auth)
-		}}
-	}
-	ghMono := func(name, owner, repo, prefix string) pkg {
-		return pkg{name, func(ctx context.Context) error {
-			return fetchGitHub(ctx, client, *cacheDir, name, owner, repo, prefix, auth)
-		}}
-	}
-	nodeDist := func(name, baseURL string) pkg {
-		return pkg{name, func(ctx context.Context) error {
-			return fetchNodeDist(ctx, client, *cacheDir, name, baseURL)
-		}}
+	// Discover packages from releases.conf files.
+	packages, err := discover(*confDir)
+	if err != nil {
+		log.Fatalf("discover: %v", err)
 	}
 
-	packages := []pkg{
-		// Node.js
-		nodeDist("node-official", "https://nodejs.org/download/release"),
-		nodeDist("node-unofficial", "https://unofficial-builds.nodejs.org/download/release"),
-
-		// GitHub packages (alphabetical)
-		gh("arc", "mholt", "archiver"),
-		gh("atomicparsley", "wez", "atomicparsley"),
-		gh("bat", "sharkdp", "bat"),
-		gh("bun", "oven-sh", "bun"),
-		gh("caddy", "caddyserver", "caddy"),
-		gh("cilium", "cilium", "cilium-cli"),
-		gh("cmake", "Kitware", "CMake"),
-		gh("comrak", "kivikakk", "comrak"),
-		gh("crabz", "sstadick", "crabz"),
-		gh("curlie", "rs", "curlie"),
-		gh("dashcore", "dashpay", "dash"),
-		gh("dashmsg", "dashhive", "dashmsg"),
-		gh("delta", "dandavison", "delta"),
-		gh("deno", "denoland", "deno"),
-		gh("dotenv", "therootcompany", "dotenv"),
-		gh("dotenv-linter", "dotenv-linter", "dotenv-linter"),
-		gh("fd", "sharkdp", "fd"),
-		gh("ffmpeg", "eugeneware", "ffmpeg-static"),
-		gh("ffuf", "ffuf", "ffuf"),
-		gh("fish", "fish-shell", "fish-shell"),
-		gh("fzf", "junegunn", "fzf"),
-		gh("gh", "cli", "cli"),
-		gh("git", "git-for-windows", "git"),
-		gh("gitdeploy", "therootcompany", "gitdeploy"),
-		gh("gitea", "go-gitea", "gitea"),
-		gh("goreleaser", "goreleaser", "goreleaser"),
-		gh("gprox", "creedasaurus", "gprox"),
-		gh("grype", "anchore", "grype"),
-		gh("hexyl", "sharkdp", "hexyl"),
-		gh("hugo", "gohugoio", "hugo"),
-		gh("jq", "stedolan", "jq"),
-		gh("k9s", "derailed", "k9s"),
-		gh("keypairs", "therootcompany", "keypairs"),
-		gh("kind", "kubernetes-sigs", "kind"),
-		gh("koji", "cococonscious", "koji"),
-		gh("kubectx", "ahmetb", "kubectx"),
-		gh("lf", "gokcehan", "lf"),
-		gh("lsd", "lsd-rs", "lsd"),
-		gh("mutagen", "mutagen-io", "mutagen"),
-		gh("ollama", "jmorganca", "ollama"),
-		gh("ots", "emdneto", "otsgo"),
-		gh("pandoc", "jgm", "pandoc"),
-		gh("pg", "bnnanet", "postgresql-releases"),
-		gh("pwsh", "powershell", "powershell"),
-		gh("rclone", "rclone", "rclone"),
-		gh("ripgrep", "BurntSushi", "ripgrep"),
-		gh("runzip", "therootcompany", "runzip"),
-		gh("sass", "sass", "dart-sass"),
-		gh("sclient", "therootcompany", "sclient"),
-		gh("sd", "chmln", "sd"),
-		gh("serviceman", "bnnanet", "serviceman"),
-		gh("shellcheck", "koalaman", "shellcheck"),
-		gh("shfmt", "mvdan", "sh"),
-		gh("sqlc", "sqlc-dev", "sqlc"),
-		gh("sqlpkg", "nalgeon", "sqlpkg-cli"),
-		gh("sttr", "abhimanyu003", "sttr"),
-		gh("syncthing", "syncthing", "syncthing"),
-		gh("terramate", "terramate-io", "terramate"),
-		gh("tinygo", "tinygo-org", "tinygo"),
-		gh("trip", "fujiapple852", "trippy"),
-		gh("uuidv7", "coolaj86", "uuidv7"),
-		gh("watchexec", "watchexec", "watchexec"),
-		gh("xcaddy", "caddyserver", "xcaddy"),
-		gh("xsv", "BurntSushi", "xsv"),
-		gh("xz", "therootcompany", "xz-static"),
-		gh("yq", "mikefarah", "yq"),
-		gh("zoxide", "ajeetdsouza", "zoxide"),
-
-		// Monorepo
-		ghMono("monorel", "therootcompany", "golib", "tools/monorel/"),
-	}
-
+	// Filter to requested packages if args given.
 	args := flag.Args()
 	if len(args) > 0 {
 		nameSet := make(map[string]bool, len(args))
 		for _, a := range args {
 			nameSet[a] = true
 		}
-		var filtered []pkg
+		var filtered []pkgConf
 		for _, p := range packages {
 			if nameSet[p.name] {
 				filtered = append(filtered, p)
@@ -155,16 +69,63 @@ func main() {
 		packages = filtered
 	}
 
-	for _, p := range packages {
-		log.Printf("fetching %s...", p.name)
-		if err := p.fn(ctx); err != nil {
-			log.Printf("  ERROR: %s: %v", p.name, err)
+	log.Printf("found %d packages", len(packages))
+
+	for _, pkg := range packages {
+		log.Printf("fetching %s...", pkg.name)
+		var err error
+		switch pkg.conf.Source() {
+		case "github":
+			err = fetchGitHub(ctx, client, *cacheDir, pkg.name, pkg.conf, auth)
+		case "nodedist":
+			err = fetchNodeDist(ctx, client, *cacheDir, pkg.name, pkg.conf)
+		default:
+			log.Printf("  %s: unknown source %q, skipping", pkg.name, pkg.conf.Source())
 			continue
+		}
+		if err != nil {
+			log.Printf("  ERROR: %s: %v", pkg.name, err)
 		}
 	}
 }
 
-func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkgName, baseURL string) error {
+type pkgConf struct {
+	name string
+	conf *installerconf.Conf
+}
+
+// discover finds all {dir}/*/releases.conf files and returns them sorted.
+func discover(dir string) ([]pkgConf, error) {
+	pattern := filepath.Join(dir, "*", "releases.conf")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	var packages []pkgConf
+	for _, path := range matches {
+		name := filepath.Base(filepath.Dir(path))
+		conf, err := installerconf.Read(path)
+		if err != nil {
+			log.Printf("warning: %s: %v", path, err)
+			continue
+		}
+		packages = append(packages, pkgConf{name: name, conf: conf})
+	}
+
+	sort.Slice(packages, func(i, j int) bool {
+		return packages[i].name < packages[j].name
+	})
+
+	return packages, nil
+}
+
+func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkgName string, conf *installerconf.Conf) error {
+	baseURL := conf.Get("url")
+	if baseURL == "" {
+		return fmt.Errorf("missing url in releases.conf")
+	}
+
 	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
 	if err != nil {
 		return err
@@ -210,7 +171,15 @@ func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkgName,
 	return nil
 }
 
-func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkgName, owner, repo, tagPrefix string, auth *githubish.Auth) error {
+func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkgName string, conf *installerconf.Conf, auth *githubish.Auth) error {
+	owner := conf.Get("owner")
+	repo := conf.Get("repo")
+	tagPrefix := conf.Get("tag_prefix")
+
+	if owner == "" || repo == "" {
+		return fmt.Errorf("missing owner or repo in releases.conf")
+	}
+
 	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
 	if err != nil {
 		return err
