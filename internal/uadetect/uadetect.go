@@ -114,13 +114,20 @@ func matchOS(tokens []string) buildmeta.OS {
 		}
 	}
 
+	// FreeBSD before Linux (both are POSIX, but FreeBSD never reports "linux").
+	if has("freebsd") {
+		return buildmeta.OSFreeBSD
+	}
+
 	// Linux before Windows because WSL UAs contain both "linux" and "microsoft".
-	// But exclude Cygwin/msysgit which report Linux-like strings on Windows.
-	if has("linux") && !has("cygwin") && !has("msysgit") {
+	// But exclude Cygwin/Msys/MINGW which report Linux-like strings on Windows.
+	if has("linux") && !has("cygwin") && !has("msysgit") && !has("msys") && !has("mingw") {
 		return buildmeta.OSLinux
 	}
 
-	if has("windows") || has("win32") || has("microsoft") || has("powershell") {
+	// Cygwin, Msys, and MINGW are Windows environments.
+	if has("windows") || has("win32") || has("microsoft") || has("powershell") ||
+		has("cygwin") || has("msys") || has("mingw") {
 		return buildmeta.OSWindows
 	}
 	for _, t := range tokens {
@@ -182,6 +189,16 @@ func matchArch(tokens []string) buildmeta.Arch {
 		return buildmeta.ArchPPC64
 	}
 
+	// s390x (IBM Z)
+	if has("s390x") {
+		return buildmeta.ArchS390X
+	}
+
+	// RISC-V
+	if has("riscv64") {
+		return buildmeta.ArchRISCV64
+	}
+
 	// MIPS (check before generic 64-bit)
 	if has("mips64") {
 		return buildmeta.ArchMIPS64
@@ -217,7 +234,9 @@ func matchLibc(tokens []string) buildmeta.Libc {
 	if has("musl") {
 		return buildmeta.LibcMusl
 	}
-	if has("msvc") || has("windows") || has("microsoft") {
+	// Don't match "microsoft" — it appears in WSL kernel version strings
+	// (e.g. "5.15.146.1-microsoft-standard-WSL2") and doesn't indicate MSVC.
+	if has("msvc") || has("windows") {
 		return buildmeta.LibcMSVC
 	}
 	if has("gnu") || has("glibc") || has("linux") {

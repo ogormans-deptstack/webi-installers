@@ -27,8 +27,20 @@ func TestOS(t *testing.T) {
 		{"PowerShell/7.3.0", buildmeta.OSWindows},
 		{"Microsoft Windows 10.0.19045", buildmeta.OSWindows},
 
+		// Msys/MINGW/Cygwin → Windows
+		{"webi/curl x86_64/unknown Msys/MINGW64_NT-10.0-19045/3.5.7-463ebcdc.x86_64 libc", buildmeta.OSWindows},
+		{"webi/curl+wget x86_64/unknown Msys/MSYS_NT-10.0-26200/3.6.6-1cdd4371.x86_64 libc", buildmeta.OSWindows},
+		{"webi/curl x86_64/unknown Cygwin/CYGWIN_NT-10.0/2.10.0(0.325/5/3) libc", buildmeta.OSWindows},
+
+		// FreeBSD
+		{"webi/curl amd64/unknown FreeBSD/14.3-RELEASE-p8 libc", buildmeta.OSFreeBSD},
+
 		// Android before Linux
 		{"Android 13 aarch64", buildmeta.OSAndroid},
+		{"webi/curl aarch64/unknown Android/Linux/6.6.77-android15-8 libc", buildmeta.OSAndroid},
+
+		// WSL: Linux, not Windows (kernel contains "microsoft")
+		{"webi/curl+wget x86_64/unknown GNU/Linux/5.15.146.1-microsoft-standard-WSL2 libc", buildmeta.OSLinux},
 
 		// Browser-style
 		{"Macintosh; Intel Mac OS X 10_15_7", buildmeta.OSDarwin},
@@ -63,6 +75,10 @@ func TestArch(t *testing.T) {
 		{"Linux 5.10.0 armv7l", buildmeta.ArchARMv7},
 		{"Linux 5.10.0 armv6l", buildmeta.ArchARMv6},
 		{"Linux 5.4.0 ppc64le", buildmeta.ArchPPC64LE},
+		{"webi/curl+wget s390x/unknown GNU/Linux/6.4.0-150700.53.6-default libc", buildmeta.ArchS390X},
+
+		// FreeBSD uses "amd64" not "x86_64"
+		{"webi/curl amd64/unknown FreeBSD/14.3-RELEASE-p8 libc", buildmeta.ArchAMD64},
 
 		// Rosetta: xnu kernel info says ARM64 but actual arch is x86_64
 		{"Darwin 20.2.0 Darwin Kernel Version 20.2.0; root:xnu-7195.60.75~1/RELEASE_ARM64_T8101 x86_64", buildmeta.ArchAMD64},
@@ -91,6 +107,10 @@ func TestLibc(t *testing.T) {
 		{"MS AMD64 msvc", buildmeta.LibcMSVC},
 		{"Microsoft Windows", buildmeta.LibcMSVC},
 		{"Darwin 23.1.0 arm64", buildmeta.LibcNone},
+
+		// WSL: kernel version contains "microsoft" but libc is gnu, not msvc
+		{"webi/curl+wget x86_64/unknown GNU/Linux/5.15.146.1-microsoft-standard-WSL2 libc", buildmeta.LibcGNU},
+
 		{"-", ""},
 	}
 
