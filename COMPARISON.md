@@ -22,18 +22,10 @@ Go includes GitHub source tarballs (tarball_url/zipball_url) for releases with n
 binary assets. Node.js does not. Affects 18 packages. **Decision needed**: should
 these be included?
 
-### 4. Unsupported Sources
-10 packages use custom source types not yet implemented in Go:
-- `chromedist` — chromedriver
-- `flutterdist` — flutter
-- `golang` — go
-- `gpgdist` — gpg
-- `hashicorp` — terraform
-- `iterm2dist` — iterm2
-- `juliadist` — julia
-- `mariadbdist` — mariadb
-- `zigdist` — zig
-- (macos has no releases.conf)
+### 4. Previously Unsupported Sources (NOW FIXED)
+All custom source types are now wired into webicached. The only remaining
+go-missing packages are: dashd (alias), macos (no releases.conf),
+pg-essentials (meta-package), zig.vim (gittag with no raw data).
 
 ### 5. Version Depth
 Go has deeper version history for most GitHub-sourced packages because it fetches
@@ -44,13 +36,13 @@ provides complete histories.
 
 | Category | Count | Meaning |
 |----------|-------|---------|
-| match | 8 | Identical asset filenames |
-| go-missing | 4 | Go produces no output (unsupported source or alias) |
+| match | 9 | Identical asset filenames |
+| go-missing | 4 | Go produces no output (alias, meta-package, or no config) |
 | live-missing | 16 | Package exists in Go but not in live cache |
-| go-extra-versions | 50 | Go has more version history (deeper fetch) |
-| live-extra-versions | 20 | Live has newer data or uses a different source |
-| go-extra-assets | 56 | Go includes assets that Node.js filters out |
-| live-extra-assets | 22 | Node.js includes assets that Go filters out |
+| go-extra-versions | 52 | Go has more version history (deeper fetch) |
+| live-extra-versions | 15 | Live has newer data or uses a different source |
+| go-extra-assets | 64 | Go includes assets that Node.js filters out |
+| live-extra-assets | 20 | Node.js includes assets that Go filters out |
 | live-has-meta | 43 | Node.js includes meta-assets (checksums, sigs) |
 | go-has-source-tarballs | 18 | Go includes source tarballs for no-binary releases |
 
@@ -108,16 +100,16 @@ These packages differ only because Go strips checksums/sigs/SBOMs:
 - [-] sqlpkg — live-has-meta(7)
 - [-] xz — live-has-meta(1)
 
-### Unsupported Source Types (Go has 0 assets)
-- [ ] chromedriver — source=chromedist, needs custom fetcher
-- [ ] flutter — source=flutterdist, needs custom fetcher
-- [ ] go — source=golang, needs custom fetcher
-- [ ] gpg — source=gpgdist, needs custom fetcher
-- [ ] iterm2 — source=iterm2dist, needs custom fetcher
-- [ ] julia — source=juliadist, needs custom fetcher
-- [ ] mariadb — source=mariadbdist, needs custom fetcher
-- [ ] terraform — source=hashicorp, needs custom fetcher
-- [ ] zig — source=zigdist, needs custom fetcher
+### Custom Source Types (now wired, needs detailed review)
+- [ ] chromedriver — chromedist, live-extra-versions(1), go-extra-assets(5)
+- [ ] flutter — flutterdist, live-extra-assets(1), go-extra-assets(2082)
+- [ ] go — golang, version overlap differences
+- [-] gpg — gpgdist, match
+- [ ] iterm2 — iterm2dist, live-extra-versions(20), go-extra-assets(262)
+- [ ] julia — juliadist, live-extra-assets(1), go-extra-assets(1783)
+- [ ] mariadb — mariadbdist, go-extra-assets(11)
+- [ ] terraform — hashicorp, live-extra-assets(1), go-extra-assets(5550)
+- [ ] zig — zigdist, version differences
 
 ### Version Depth + Extra Assets (needs detailed review)
 These have real asset selection differences beyond version depth and meta filtering.
