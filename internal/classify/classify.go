@@ -176,6 +176,7 @@ var formatSuffixes = []struct {
 	{".tar.gz", buildmeta.FormatTarGz},
 	{".tar.xz", buildmeta.FormatTarXz},
 	{".tar.zst", buildmeta.FormatTarZst},
+	{".tar.bz2", buildmeta.FormatTarBz2},
 	{".exe.xz", buildmeta.FormatExeXz},
 	{".app.zip", buildmeta.FormatAppZip},
 	{".tgz", buildmeta.FormatTarGz},

@@ -75,6 +75,7 @@ const (
 	FormatTarGz  Format = ".tar.gz"
 	FormatTarXz  Format = ".tar.xz"
 	FormatTarZst Format = ".tar.zst"
+	FormatTarBz2 Format = ".tar.bz2"
 	FormatZip    Format = ".zip"
 	FormatGz     Format = ".gz"
 	FormatXz     Format = ".xz"
