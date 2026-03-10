@@ -154,7 +154,7 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
       download URL kept); non-baseline tagged as v3 variant (excluded).
 - [x] fish — source tarball tagged as variant; linux .tar.xz binaries are
       correct (Node.js just doesn't have them yet)
-- [ ] git — 4 extras: MinGit-busybox .zip, pdbs .zip at latest version
+- [x] git — busybox and pdbs-for-git tagged as variants
 - [-] hugo — 1 extra: `Linux-64bit.tar.gz` (old naming); keep as-is for now
 - [-] hugo-extended — 14 extras: non-extended assets leaking in; keep as-is for now
 - [ ] kubectx — 14 extras: kubens assets from shared GitHub release

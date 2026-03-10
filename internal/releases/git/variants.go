@@ -21,8 +21,11 @@ func TagVariants(assets []storage.Asset) {
 		if strings.Contains(lower, "portablegit") {
 			assets[i].Variants = append(assets[i].Variants, "installer")
 		}
-		if strings.Contains(lower, "-pdb") {
+		if strings.Contains(lower, "-pdb") || strings.Contains(lower, "pdbs-for-") {
 			assets[i].Variants = append(assets[i].Variants, "pdb")
+		}
+		if strings.Contains(lower, "-busybox") {
+			assets[i].Variants = append(assets[i].Variants, "busybox")
 		}
 	}
 }
