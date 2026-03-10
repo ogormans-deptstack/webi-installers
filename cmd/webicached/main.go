@@ -1357,8 +1357,9 @@ func classifyMariaDBDist(d *rawcache.Dir) ([]storage.Asset, error) {
 		lts := rel.MajorStatus == "Stable"
 
 		for _, f := range rel.Files {
-			// Skip source packages (no OS or CPU).
-			if f.OS == "" || f.CPU == "" {
+			// Skip source packages. The API uses OS="Source" and
+			// sometimes " " (not empty) for CPU on source tarballs.
+			if strings.EqualFold(f.OS, "source") || strings.TrimSpace(f.OS) == "" || strings.TrimSpace(f.CPU) == "" {
 				continue
 			}
 			// Skip debug builds.
