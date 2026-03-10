@@ -1452,9 +1452,9 @@ func classifyZigDist(d *rawcache.Dir) ([]storage.Asset, error) {
 func isMetaAsset(name string) bool {
 	lower := strings.ToLower(name)
 	for _, suffix := range []string{
+		".txt",
 		".sha256", ".sha256sum", ".sha512", ".sha512sum",
 		".md5", ".md5sum", ".sig", ".asc", ".pem",
-		"checksums.txt", "sha256sums", "sha512sums",
 		".sbom", ".spdx", ".json.sig", ".sigstore",
 		"_src.tar.gz", "_src.tar.xz", "_src.zip",
 		"-src.tar.gz", "-src.tar.xz", "-src.zip",
@@ -1465,7 +1465,6 @@ func isMetaAsset(name string) bool {
 		}
 	}
 	for _, contains := range []string{
-		"checksums", "sha256sum", "sha512sum",
 		"buildable-artifact",
 		".LICENSE", ".README",
 	} {
