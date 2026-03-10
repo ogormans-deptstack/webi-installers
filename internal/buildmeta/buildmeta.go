@@ -30,7 +30,10 @@ type Arch string
 
 const (
 	ArchAny     Arch = "ANYARCH"
-	ArchAMD64   Arch = "x86_64"
+	ArchAMD64   Arch = "x86_64"    // baseline (v1)
+	ArchAMD64v2 Arch = "x86_64_v2" // +SSE4, +POPCNT, etc.
+	ArchAMD64v3 Arch = "x86_64_v3" // +AVX2, +BMI, etc.
+	ArchAMD64v4 Arch = "x86_64_v4" // +AVX-512
 	ArchARM64   Arch = "aarch64"
 	ArchARMv7   Arch = "armv7"
 	ArchARMv6   Arch = "armv6"
@@ -97,4 +100,42 @@ type Target struct {
 // Triplet returns the canonical "os-arch-libc" string.
 func (t Target) Triplet() string {
 	return string(t.OS) + "-" + string(t.Arch) + "-" + string(t.Libc)
+}
+
+// ArchFallbacks returns the architectures that a machine with the given
+// arch can run, ordered from most specific to least. The input arch is
+// always first. Returns nil for unknown architectures.
+//
+// For example, an amd64v4 machine can run v4, v3, v2, and baseline (v1)
+// binaries. An armv7 machine can run armv7 and armv6 binaries.
+func ArchFallbacks(arch Arch) []Arch {
+	switch arch {
+	case ArchAMD64v4:
+		return []Arch{ArchAMD64v4, ArchAMD64v3, ArchAMD64v2, ArchAMD64}
+	case ArchAMD64v3:
+		return []Arch{ArchAMD64v3, ArchAMD64v2, ArchAMD64}
+	case ArchAMD64v2:
+		return []Arch{ArchAMD64v2, ArchAMD64}
+	case ArchARMv7:
+		return []Arch{ArchARMv7, ArchARMv6}
+	default:
+		// No fallback chain — exact match only.
+		return []Arch{arch}
+	}
+}
+
+// LibcFallbacks returns the libc variants a machine can use, ordered
+// by preference. A musl system can only run musl or static binaries.
+// A glibc system can only run glibc or static binaries.
+func LibcFallbacks(libc Libc) []Libc {
+	switch libc {
+	case LibcGNU:
+		return []Libc{LibcGNU, LibcNone}
+	case LibcMusl:
+		return []Libc{LibcMusl, LibcNone}
+	case LibcMSVC:
+		return []Libc{LibcMSVC, LibcNone}
+	default:
+		return []Libc{libc}
+	}
 }

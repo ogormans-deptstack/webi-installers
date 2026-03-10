@@ -151,6 +151,46 @@ func TestFilename(t *testing.T) {
 			format: buildmeta.FormatTarGz,
 		},
 
+		// Windows ARM: bare "arm" means ARM64, not ARMv6/v7
+		{
+			name:   "windows arm means arm64",
+			input:  "tool-1.0.0-windows-arm.zip",
+			wantOS: buildmeta.OSWindows,
+			arch:   buildmeta.ArchARM64,
+			format: buildmeta.FormatZip,
+		},
+		{
+			name:   "windows arm64 stays arm64",
+			input:  "tool-1.0.0-windows-arm64.zip",
+			wantOS: buildmeta.OSWindows,
+			arch:   buildmeta.ArchARM64,
+			format: buildmeta.FormatZip,
+		},
+
+		// amd64 micro-architecture levels
+		{
+			name: "amd64v2",
+			input: "tool-linux-amd64v2.tar.gz",
+			arch:  buildmeta.ArchAMD64v2,
+		},
+		{
+			name: "amd64v3",
+			input: "tool-linux-x86_64_v3.tar.gz",
+			arch:  buildmeta.ArchAMD64v3,
+		},
+		{
+			name: "amd64v4",
+			input: "tool-linux-amd64v4.tar.gz",
+			arch:  buildmeta.ArchAMD64v4,
+		},
+		{
+			name:   "amd64v3 not baseline",
+			input:  "tool-1.0.0-linux-amd64v3.tar.gz",
+			wantOS: buildmeta.OSLinux,
+			arch:   buildmeta.ArchAMD64v3,
+			format: buildmeta.FormatTarGz,
+		},
+
 		// ARM variants: arm64 must not match armv7/armv6
 		{
 			name: "aarch64 not armv7",

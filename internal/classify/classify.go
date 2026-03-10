@@ -32,11 +32,25 @@ func (r Result) Target() buildmeta.Target {
 
 // Filename classifies a release asset filename, returning the detected
 // OS, architecture, libc, and archive format. Undetected fields are empty.
+//
+// OS is detected first because it can influence arch interpretation.
+// For example, "windows-arm" in modern releases means ARM64, while
+// bare "arm" on Linux historically means ARMv6.
 func Filename(name string) Result {
 	lower := strings.ToLower(name)
+	os := detectOS(lower)
+	arch := detectArch(lower)
+
+	// On Windows, bare "arm" (detected as ARMv6) almost certainly means
+	// ARM64. Windows never shipped ARMv6 binaries — "ARM" became the
+	// marketing label for ARM64 (Windows on ARM).
+	if os == buildmeta.OSWindows && arch == buildmeta.ArchARMv6 {
+		arch = buildmeta.ArchARM64
+	}
+
 	return Result{
-		OS:     detectOS(lower),
-		Arch:   detectArch(lower),
+		OS:     os,
+		Arch:   arch,
 		Libc:   detectLibc(lower),
 		Format: detectFormat(lower),
 	}
@@ -78,12 +92,16 @@ var archPatterns = []struct {
 	arch    buildmeta.Arch
 	pattern *regexp.Regexp
 }{
-	// amd64 before x86 — "x86_64" must not match as x86.
+	// amd64 micro-levels before baseline — "amd64v3" must not fall through to amd64.
+	{buildmeta.ArchAMD64v4, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v4|amd64v4|v4-amd64)`)},
+	{buildmeta.ArchAMD64v3, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v3|amd64v3|v3-amd64)`)},
+	{buildmeta.ArchAMD64v2, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v2|amd64v2|v2-amd64)`)},
+	// amd64 baseline before x86 — "x86_64" must not match as x86.
 	{buildmeta.ArchAMD64, regexp.MustCompile(`(?i)(?:x86[_-]64|amd64|x64|64-bit)`)},
 	// arm64 before armv7/armv6 — "aarch64" must not match as arm.
 	{buildmeta.ArchARM64, regexp.MustCompile(`(?i)(?:aarch64|arm64|armv8)`)},
 	{buildmeta.ArchARMv7, regexp.MustCompile(`(?i)(?:armv7l?|arm-?v7|arm32)`)},
-	{buildmeta.ArchARMv6, regexp.MustCompile(`(?i)(?:armv6l?|arm-?v6|aarch32)`)},
+	{buildmeta.ArchARMv6, regexp.MustCompile(`(?i)(?:armv6l?|arm-?v6|aarch32|` + b + `arm` + bEnd + `)`)},
 	// ppc64le before ppc64.
 	{buildmeta.ArchPPC64LE, regexp.MustCompile(`(?i)ppc64le`)},
 	{buildmeta.ArchPPC64, regexp.MustCompile(`(?i)ppc64`)},
