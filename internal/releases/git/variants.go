@@ -11,12 +11,8 @@ import (
 	"github.com/webinstall/webi-installers/internal/storage"
 )
 
-// Tagger implements storage.VariantTagger for Git.
-var Tagger storage.VariantTagger = tagger{}
-
-type tagger struct{}
-
-func (tagger) TagVariants(assets []storage.Asset) {
+// TagVariants tags git-specific build variants.
+func TagVariants(assets []storage.Asset) {
 	for i := range assets {
 		lower := strings.ToLower(assets[i].Filename)
 		if assets[i].Format == ".exe" {

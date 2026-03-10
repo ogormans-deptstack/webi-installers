@@ -10,12 +10,8 @@ import (
 	"github.com/webinstall/webi-installers/internal/storage"
 )
 
-// Tagger implements storage.VariantTagger for lsd.
-var Tagger storage.VariantTagger = tagger{}
-
-type tagger struct{}
-
-func (tagger) TagVariants(assets []storage.Asset) {
+// TagVariants tags lsd-specific build variants.
+func TagVariants(assets []storage.Asset) {
 	for i := range assets {
 		if assets[i].Format == ".deb" {
 			assets[i].Variants = append(assets[i].Variants, "deb")

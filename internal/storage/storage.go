@@ -51,12 +51,6 @@ type Store interface {
 	BeginRefresh(ctx context.Context, pkg string) (RefreshTx, error)
 }
 
-// VariantTagger applies package-specific variant tags to classified assets.
-// Implementations live in per-installer packages (e.g. internal/releases/bun).
-type VariantTagger interface {
-	TagVariants(assets []Asset)
-}
-
 // RefreshTx is a write transaction for replacing a package's assets.
 type RefreshTx interface {
 	// Put stages assets to be written. May be called multiple times

@@ -1460,23 +1460,26 @@ func isMetaAsset(name string) bool {
 	return false
 }
 
-// variantTaggers maps package names to their variant tagger.
-// Each tagger lives in its own package under internal/releases/.
-var variantTaggers = map[string]storage.VariantTagger{
-	"bun":    bun.Tagger,
-	"fish":   fish.Tagger,
-	"git":    git.Tagger,
-	"lsd":    lsd.Tagger,
-	"node":   node.Tagger,
-	"ollama": ollama.Tagger,
-	"pwsh":   pwsh.Tagger,
-	"xcaddy": xcaddy.Tagger,
-}
-
 // tagVariants applies package-specific variant tags to classified assets.
+// Each case delegates to a per-installer package under internal/releases/.
 func tagVariants(pkg string, _ *installerconf.Conf, assets []storage.Asset) {
-	if t, ok := variantTaggers[pkg]; ok {
-		t.TagVariants(assets)
+	switch pkg {
+	case "bun":
+		bun.TagVariants(assets)
+	case "fish":
+		fish.TagVariants(assets)
+	case "git":
+		git.TagVariants(assets)
+	case "lsd":
+		lsd.TagVariants(assets)
+	case "node":
+		node.TagVariants(assets)
+	case "ollama":
+		ollama.TagVariants(assets)
+	case "pwsh":
+		pwsh.TagVariants(assets)
+	case "xcaddy":
+		xcaddy.TagVariants(assets)
 	}
 }
 

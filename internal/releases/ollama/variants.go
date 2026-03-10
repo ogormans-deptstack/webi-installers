@@ -10,12 +10,8 @@ import (
 	"github.com/webinstall/webi-installers/internal/storage"
 )
 
-// Tagger implements storage.VariantTagger for Ollama.
-var Tagger storage.VariantTagger = tagger{}
-
-type tagger struct{}
-
-func (tagger) TagVariants(assets []storage.Asset) {
+// TagVariants tags ollama-specific build variants.
+func TagVariants(assets []storage.Asset) {
 	for i := range assets {
 		lower := strings.ToLower(assets[i].Filename)
 		for _, v := range []string{"rocm", "jetpack5", "jetpack6"} {

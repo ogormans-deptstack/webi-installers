@@ -9,6 +9,7 @@ install-*.ps1
 /fetchraw
 /inspect
 /uaparse
+/webicached
 /zigtest
 /distributables.csv
 
