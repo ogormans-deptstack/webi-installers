@@ -281,12 +281,15 @@ Node.js server.
 - [x] `internal/rawcache` — double-buffered raw upstream response storage
 - [x] `internal/classify` — build artifact classifier (80/20, filename→target)
 - [x] `internal/platlatest` — per-platform latest version index
-- [ ] End-to-end: fetch complete histories for a few real packages
-- [ ] Per-installer config format (fallback rules, version-ranged overrides)
+- [x] End-to-end: fetch complete histories for all 103 packages
+- [x] `internal/installerconf` — flat key=value config parser with typed struct
 - [ ] Resolver (platlatest + installer config + CompatArches → pick binary)
-- [ ] `internal/storage` — interface definition
-- [ ] `internal/storage/fsstore` — filesystem implementation
-- [ ] `cmd/webicached` — cache daemon that can replace the Node.js caching
+- [x] `internal/storage` — interface definition (Asset, PackageData, Store, RefreshTx)
+- [x] `internal/storage/legacy.go` — LegacyAsset/LegacyCache for Node.js compat
+- [x] `internal/storage/fsstore` — filesystem implementation (atomic writes)
+- [x] `cmd/webicached` — cache daemon (fetch → classify → write, all sources)
+- [x] `cmd/comparecache` — Go vs Node.js cache comparison tool
+- [ ] Comparison review: see `COMPARISON.md` for per-package checklist
 
 **Integration point:** `webicached` writes the same `_cache/` JSON format. The
 Node.js server can read from it. Zero-risk cutover for release fetching.

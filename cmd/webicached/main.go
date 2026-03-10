@@ -10,7 +10,8 @@
 //
 //	go run ./cmd/webicached
 //	go run ./cmd/webicached -conf . -cache ./_cache -raw ./_cache/raw bat goreleaser
-//	go run ./cmd/webicached -once   # single pass, no periodic refresh
+//	go run ./cmd/webicached -once          # single pass, no periodic refresh
+//	go run ./cmd/webicached -once -no-fetch # classify from existing raw data only
 package main
 
 import (
@@ -44,6 +45,7 @@ func main() {
 	rawDir := flag.String("raw", "_cache/raw", "raw cache directory for upstream responses")
 	token := flag.String("token", os.Getenv("GITHUB_TOKEN"), "GitHub API token")
 	once := flag.Bool("once", false, "run once then exit (no periodic refresh)")
+	noFetch := flag.Bool("no-fetch", false, "skip fetching, classify from existing raw data only")
 	interval := flag.Duration("interval", 15*time.Minute, "refresh interval")
 	flag.Parse()
 
@@ -91,7 +93,7 @@ func main() {
 				continue
 			}
 
-			err := refreshPackage(ctx, client, store, *rawDir, pkg, auth)
+			err := refreshPackage(ctx, client, store, *rawDir, pkg, auth, *noFetch)
 			if err != nil {
 				log.Printf("  ERROR %s: %v", pkg.name, err)
 			}
@@ -145,13 +147,15 @@ func discover(dir string) ([]pkgConf, error) {
 
 // refreshPackage does the full pipeline for one package:
 // fetch raw → classify → write to fsstore.
-func refreshPackage(ctx context.Context, client *http.Client, store *fsstore.Store, rawDir string, pkg pkgConf, auth *githubish.Auth) error {
+func refreshPackage(ctx context.Context, client *http.Client, store *fsstore.Store, rawDir string, pkg pkgConf, auth *githubish.Auth, skipFetch bool) error {
 	name := pkg.name
 	conf := pkg.conf
 
-	// Step 1: Fetch raw upstream data to rawcache.
-	if err := fetchRaw(ctx, client, rawDir, pkg, auth); err != nil {
-		return fmt.Errorf("fetch: %w", err)
+	// Step 1: Fetch raw upstream data to rawcache (unless -no-fetch).
+	if !skipFetch {
+		if err := fetchRaw(ctx, client, rawDir, pkg, auth); err != nil {
+			return fmt.Errorf("fetch: %w", err)
+		}
 	}
 
 	// Step 2: Classify raw data into assets.
