@@ -620,6 +620,16 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 					Date:     date,
 				})
 			}
+			// Git clone asset — same as gittag source.
+			gitURL := fmt.Sprintf("https://github.com/%s/%s.git", owner, repo)
+			assets = append(assets, storage.Asset{
+				Filename: tag,
+				Version:  version,
+				Channel:  channel,
+				Format:   ".git",
+				Download: gitURL,
+				Date:     date,
+			})
 		}
 	}
 	return assets, nil
