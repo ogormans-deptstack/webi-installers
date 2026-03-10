@@ -2,6 +2,7 @@
 //
 // The format is simple key=value, one per line. Blank lines and lines
 // starting with # are ignored. Keys and values are trimmed of whitespace.
+// Multi-value keys are whitespace-delimited.
 //
 // Minimal example (covers ~60% of packages):
 //
@@ -16,12 +17,13 @@
 //	repo = jq
 //	version_prefixes = jq-
 //
-// With filename exclusions (hugo publishes _extended_ variants):
+// With filename exclusions and variant documentation:
 //
 //	source = github
 //	owner = gohugoio
 //	repo = hugo
-//	exclude = _extended_, Linux-64bit
+//	exclude = _extended_ Linux-64bit
+//	variants = extended extended_withdeploy
 //
 // Monorepo with tag prefix:
 //
@@ -43,6 +45,8 @@
 // Complex packages that need custom logic beyond what the classifier
 // auto-detects (e.g. ollama's universal binaries, ffmpeg's non-standard
 // naming) should put that logic in Go code, not in the config.
+// The variants key documents known build variants for human readers;
+// actual variant detection logic lives in Go.
 package installerconf
 
 import (
@@ -74,16 +78,20 @@ type Conf struct {
 	TagPrefix string
 
 	// VersionPrefixes are stripped from version/tag strings.
-	// Comma-separated. Each release tag is checked against these in order;
-	// the first match is stripped. Projects may change tag conventions across
-	// versions (e.g. "jq-1.7.1" in older releases, bare "1.8.0" later).
-	// Example: "jq-, cli-"
+	// Whitespace-delimited. Each release tag is checked against these
+	// in order; the first match is stripped. Projects may change tag
+	// conventions across versions (e.g. "jq-1.7.1" older, "1.8.0" later).
 	VersionPrefixes []string
 
 	// Exclude lists filename substrings to filter out.
-	// Assets whose name contains any of these are skipped.
-	// Example: ["_extended_", "-gogit-", "-docs-"]
+	// Whitespace-delimited. Assets whose name contains any of these
+	// are skipped entirely (not stored).
 	Exclude []string
+
+	// Variants documents known build variant names for this package.
+	// Whitespace-delimited. This is a human-readable cue — actual
+	// variant detection logic lives in Go code per-package.
+	Variants []string
 
 	// Extra holds any unrecognized keys for forward compatibility.
 	Extra map[string]string
@@ -121,15 +129,9 @@ func Read(path string) (*Conf, error) {
 	c.TagPrefix = raw["tag_prefix"]
 
 	if v := raw["version_prefixes"]; v != "" {
-		for _, p := range strings.Split(v, ",") {
-			p = strings.TrimSpace(p)
-			if p != "" {
-				c.VersionPrefixes = append(c.VersionPrefixes, p)
-			}
-		}
+		c.VersionPrefixes = strings.Fields(v)
 	} else if v := raw["version_prefix"]; v != "" {
-		// Back-compat with singular form.
-		c.VersionPrefixes = []string{v}
+		c.VersionPrefixes = strings.Fields(v)
 	}
 
 	if v := raw["base_url"]; v != "" {
@@ -138,13 +140,15 @@ func Read(path string) (*Conf, error) {
 		c.BaseURL = raw["url"]
 	}
 
+	// Accept both "exclude" and "asset_exclude" (back-compat).
 	if v := raw["exclude"]; v != "" {
-		for _, p := range strings.Split(v, ",") {
-			p = strings.TrimSpace(p)
-			if p != "" {
-				c.Exclude = append(c.Exclude, p)
-			}
-		}
+		c.Exclude = strings.Fields(v)
+	} else if v := raw["asset_exclude"]; v != "" {
+		c.Exclude = strings.Fields(v)
+	}
+
+	if v := raw["variants"]; v != "" {
+		c.Variants = strings.Fields(v)
 	}
 
 	// Collect unrecognized keys.
@@ -152,7 +156,7 @@ func Read(path string) (*Conf, error) {
 		"source": true, "owner": true, "repo": true,
 		"base_url": true, "url": true,
 		"tag_prefix": true, "version_prefix": true, "version_prefixes": true,
-		"exclude": true,
+		"exclude": true, "asset_exclude": true, "variants": true,
 	}
 	for k, v := range raw {
 		if !known[k] {

@@ -32,7 +32,7 @@ func TestVersionPrefixes(t *testing.T) {
 source = github
 owner = jqlang
 repo = jq
-version_prefixes = jq-, cli-
+version_prefixes = jq- cli-
 `)
 	if len(c.VersionPrefixes) != 2 {
 		t.Fatalf("VersionPrefixes has %d items, want 2: %v", len(c.VersionPrefixes), c.VersionPrefixes)
@@ -46,7 +46,7 @@ func TestExclude(t *testing.T) {
 source = github
 owner = gohugoio
 repo = hugo
-exclude = _extended_, Linux-64bit
+exclude = _extended_ Linux-64bit
 `)
 	if len(c.Exclude) != 2 {
 		t.Fatalf("Exclude has %d items, want 2: %v", len(c.Exclude), c.Exclude)
@@ -108,6 +108,34 @@ custom_thing = hello
 	if c.Extra == nil || c.Extra["custom_thing"] != "hello" {
 		t.Errorf("Extra[custom_thing] = %q, want hello", c.Extra["custom_thing"])
 	}
+}
+
+func TestAssetExcludeAlias(t *testing.T) {
+	c := confFromString(t, `
+source = github
+owner = gohugoio
+repo = hugo
+asset_exclude = extended
+`)
+	if len(c.Exclude) != 1 {
+		t.Fatalf("Exclude has %d items, want 1: %v", len(c.Exclude), c.Exclude)
+	}
+	assertEqual(t, "Exclude[0]", c.Exclude[0], "extended")
+}
+
+func TestVariants(t *testing.T) {
+	c := confFromString(t, `
+source = github
+owner = jmorganca
+repo = ollama
+variants = rocm jetpack5 jetpack6
+`)
+	if len(c.Variants) != 3 {
+		t.Fatalf("Variants has %d items, want 3: %v", len(c.Variants), c.Variants)
+	}
+	assertEqual(t, "Variants[0]", c.Variants[0], "rocm")
+	assertEqual(t, "Variants[1]", c.Variants[1], "jetpack5")
+	assertEqual(t, "Variants[2]", c.Variants[2], "jetpack6")
 }
 
 func TestEmptyExclude(t *testing.T) {

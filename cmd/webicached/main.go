@@ -199,6 +199,9 @@ func (wc *WebiCache) refreshPackage(ctx context.Context, pkg pkgConf) error {
 		return fmt.Errorf("classify: %w", err)
 	}
 
+	// Step 2.5: Tag build variants.
+	tagVariants(name, conf, assets)
+
 	// Step 3: Apply config transforms.
 	assets = applyConfig(assets, conf)
 
@@ -1447,5 +1450,137 @@ func isMetaAsset(name string) bool {
 		}
 	}
 	return false
+}
+
+// tagVariants sets Asset.Variants for known build variants.
+// Detection logic is per-package; the releases.conf "variants" key
+// is documentation only — actual pattern matching lives here.
+func tagVariants(pkg string, conf *installerconf.Conf, assets []storage.Asset) {
+	switch pkg {
+	case "bun":
+		tagVariantsBun(assets)
+	case "pwsh":
+		tagVariantsPwsh(assets)
+	case "ollama":
+		tagVariantsOllama(assets)
+	case "git":
+		tagVariantsGit(assets)
+	case "node":
+		tagVariantsNode(assets)
+	case "lsd":
+		tagVariantsLsd(assets)
+	case "fish":
+		tagVariantsFish(assets)
+	case "xcaddy":
+		tagVariantsXcaddy(assets)
+	}
+}
+
+// tagVariantsBun: -profile is a debug build, -baseline is actually amd64
+// (non-baseline is amd64v3). Arch remapping + variant tagging.
+func tagVariantsBun(assets []storage.Asset) {
+	for i := range assets {
+		lower := strings.ToLower(assets[i].Filename)
+		if strings.Contains(lower, "-profile") {
+			assets[i].Variants = append(assets[i].Variants, "profile")
+		}
+		// Non-baseline x86_64 is actually amd64v3; baseline is plain amd64.
+		if assets[i].Arch == "amd64" {
+			if strings.Contains(lower, "-baseline") {
+				// baseline stays amd64, no variant needed
+			} else {
+				// non-baseline is the v3 microarchitecture
+				assets[i].Arch = "amd64v3"
+			}
+		}
+	}
+}
+
+// tagVariantsPwsh: -fxdependent and -fxdependentWinDesktop are
+// .NET framework-dependent builds (smaller, require .NET runtime).
+func tagVariantsPwsh(assets []storage.Asset) {
+	for i := range assets {
+		lower := strings.ToLower(assets[i].Filename)
+		if strings.Contains(lower, "-fxdependentwindesktop") {
+			assets[i].Variants = append(assets[i].Variants, "fxdependentWinDesktop")
+		} else if strings.Contains(lower, "-fxdependent") {
+			assets[i].Variants = append(assets[i].Variants, "fxdependent")
+		}
+	}
+}
+
+// tagVariantsOllama: GPU accelerator builds (-rocm, -jetpack5, -jetpack6).
+func tagVariantsOllama(assets []storage.Asset) {
+	for i := range assets {
+		lower := strings.ToLower(assets[i].Filename)
+		for _, v := range []string{"rocm", "jetpack5", "jetpack6"} {
+			if strings.Contains(lower, "-"+v) {
+				assets[i].Variants = append(assets[i].Variants, v)
+			}
+		}
+	}
+}
+
+// tagVariantsGit: GUI installer .exe files (Git-*-bit.exe, PortableGit, etc.)
+// vs MinGit .zip which is the actual portable binary.
+func tagVariantsGit(assets []storage.Asset) {
+	for i := range assets {
+		name := assets[i].Filename
+		lower := strings.ToLower(name)
+		// Git-2.48.1-64-bit.exe and similar are GUI installers
+		if assets[i].Format == ".exe" {
+			assets[i].Variants = append(assets[i].Variants, "installer")
+		}
+		// PortableGit is a self-extracting installer
+		if strings.Contains(lower, "portablegit") {
+			assets[i].Variants = append(assets[i].Variants, "installer")
+		}
+		// .pdb archives are debug symbols
+		if strings.Contains(lower, "-pdb") {
+			assets[i].Variants = append(assets[i].Variants, "pdb")
+		}
+	}
+}
+
+// tagVariantsNode: .exe files for Windows are the bare binary, but
+// node-v*-x64.msi and similar are GUI installers.
+func tagVariantsNode(assets []storage.Asset) {
+	for i := range assets {
+		if assets[i].Format == ".msi" {
+			assets[i].Variants = append(assets[i].Variants, "installer")
+		}
+		// node-v25.8.0-win-x64.exe is a bare binary, not an installer.
+		// Only .msi is the installer for node.
+	}
+}
+
+// tagVariantsLsd: .deb packages and windows-msvc builds.
+func tagVariantsLsd(assets []storage.Asset) {
+	for i := range assets {
+		if assets[i].Format == ".deb" {
+			assets[i].Variants = append(assets[i].Variants, "deb")
+		}
+		if strings.Contains(strings.ToLower(assets[i].Filename), "-msvc") {
+			assets[i].Variants = append(assets[i].Variants, "msvc")
+		}
+	}
+}
+
+// tagVariantsFish: .pkg installers and source tarballs.
+func tagVariantsFish(assets []storage.Asset) {
+	for i := range assets {
+		if assets[i].Format == ".pkg" {
+			assets[i].Variants = append(assets[i].Variants, "installer")
+		}
+	}
+}
+
+// tagVariantsXcaddy: .deb packages.
+func tagVariantsXcaddy(assets []storage.Asset) {
+	for i := range assets {
+		if assets[i].Format == ".deb" {
+			assets[i].Variants = append(assets[i].Variants, "deb")
+		}
+	}
 }
 
