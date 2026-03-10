@@ -150,8 +150,8 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 - [-] zoxide — 4 .deb files
 
 ### Remaining Go-Extra-Assets (need review)
-- [ ] bun — 4 extras: `-baseline` builds (amd64, not a variant — but Node.js
-      doesn't have them). Need to decide if these should be in legacy output.
+- [x] bun — baseline builds now serve as legacy amd64 (filename stripped,
+      download URL kept); non-baseline tagged as v3 variant (excluded).
 - [ ] fish — 3 extras: linux .tar.xz binaries and source .tar.xz
 - [ ] git — 4 extras: MinGit-busybox .zip, pdbs .zip at latest version
 - [ ] hugo — 1 extra: `Linux-64bit.tar.gz` (old naming, should be excluded)
@@ -185,7 +185,16 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 1. **hugo-extended exclude**: `exclude = extended` catches base hugo but
    non-extended assets still appear in hugo-extended's output
 2. **kubectx/kubens split**: Filter assets by name prefix in shared release
-3. **bun baseline in legacy**: Decide whether `-baseline` (plain amd64) belongs
-   in legacy output — Node.js doesn't have them currently
+3. ~~**bun baseline in legacy**~~: Resolved — baseline is legacy amd64,
+   non-baseline tagged as v3 variant
 4. **Re-fetch with GITHUB_TOKEN**: Fix rate-limited/stale packages
 5. **Unknown asset notifications**: Log new/unrecognized assets to `_notices/`
+
+## Deferred Decisions
+
+1. **Consolidate cmd/classify and cmd/webicached duplication**: Both have their
+   own `classifyPackage` switch, `isMetaAsset`, `detectFormat`, and GitHub API
+   types (`ghRelease`, `ghAsset`, etc.). `cmd/classify` is a diagnostic tool
+   (CSV output), `cmd/webicached` is the production pipeline (`[]storage.Asset`).
+   Shared pieces could move to `internal/` packages. Keep separate dispatchers
+   since they return different types.
