@@ -238,14 +238,18 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 		return d
 	}
 
-	// Collect filenames by version.
-	extractVersionFiles := func(ce *cacheEntry) (map[string]map[string]bool, []string) {
+	// Collect filenames by version. If filter is non-nil, skip filenames it rejects.
+	extractVersionFiles := func(ce *cacheEntry, filter func(string) bool) (map[string]map[string]bool, []string) {
 		vf := make(map[string]map[string]bool)
 		for _, r := range ce.Releases {
+			name := effectiveName(r.Name, r.Filename, r.Download)
+			if filter != nil && !filter(name) {
+				continue
+			}
 			if vf[r.Version] == nil {
 				vf[r.Version] = make(map[string]bool)
 			}
-			vf[r.Version][effectiveName(r.Name, r.Filename, r.Download)] = true
+			vf[r.Version][name] = true
 		}
 		var versions []string
 		for v := range vf {
@@ -256,6 +260,7 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 		})
 		return vf, versions
 	}
+	notNoise := func(name string) bool { return !isLiveNoise(name) }
 
 	var liveFiles, goFiles map[string]bool
 
@@ -263,7 +268,7 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 	var liveVF map[string]map[string]bool
 	var liveVersions []string
 	if live != nil {
-		liveVF, liveVersions = extractVersionFiles(live)
+		liveVF, liveVersions = extractVersionFiles(live, notNoise)
 		d.VersionsLive = liveVersions
 		d.LiveCount = len(live.Releases)
 	}
@@ -272,7 +277,7 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 	var goVF map[string]map[string]bool
 	var goVersions []string
 	if goCache != nil {
-		goVF, goVersions = extractVersionFiles(goCache)
+		goVF, goVersions = extractVersionFiles(goCache, nil)
 		d.VersionsGo = goVersions
 		d.GoCount = len(goCache.Releases)
 	}
@@ -320,17 +325,21 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 			}
 		}
 	} else {
-		// Compare all versions.
+		// Compare all versions — use pre-filtered version maps.
 		if live != nil {
 			liveFiles = make(map[string]bool)
-			for _, r := range live.Releases {
-				liveFiles[effectiveName(r.Name, r.Filename, r.Download)] = true
+			for _, files := range liveVF {
+				for f := range files {
+					liveFiles[f] = true
+				}
 			}
 		}
 		if goCache != nil {
 			goFiles = make(map[string]bool)
-			for _, r := range goCache.Releases {
-				goFiles[effectiveName(r.Name, r.Filename, r.Download)] = true
+			for _, files := range goVF {
+				for f := range files {
+					goFiles[f] = true
+				}
 			}
 		}
 	}
@@ -449,6 +458,56 @@ func categorize(d *packageDiff) {
 	if nonMetaOnlyInGo > 0 {
 		d.Categories = append(d.Categories, fmt.Sprintf("go-extra-assets(%d)", nonMetaOnlyInGo))
 	}
+}
+
+// isLiveNoise returns true for filenames that the Node.js cache keeps
+// but Go intentionally filters out. Pre-filtering these from the live
+// side prevents them from appearing as live-extra-assets noise.
+func isLiveNoise(name string) bool {
+	lower := strings.ToLower(name)
+
+	// Formats Go filters from legacy export.
+	for _, suffix := range []string{
+		".deb", ".rpm", ".asc", ".sig", ".gpg",
+		".sbom", ".spdx", ".pem", ".sigstore",
+		".sha256", ".sha256sum", ".sha512", ".sha512sum",
+		".md5", ".md5sum",
+		".d.ts", ".pub",
+	} {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+
+	// Exact basenames.
+	base := lower
+	if i := strings.LastIndex(base, "/"); i >= 0 {
+		base = base[i+1:]
+	}
+	for _, exact := range []string{
+		"sha256sums", "sha512sums",
+		"checksums.txt", "install.sh", "install.ps1",
+	} {
+		if base == exact {
+			return true
+		}
+	}
+
+	// Substring patterns.
+	for _, pat := range []string{
+		"checksums", "sha256sum", "sha512sum",
+	} {
+		if strings.Contains(lower, pat) {
+			return true
+		}
+	}
+
+	// .txt files (release notes, checksums, etc.) — not installable.
+	if strings.HasSuffix(lower, ".txt") {
+		return true
+	}
+
+	return false
 }
 
 func isMetaFile(name string) bool {
