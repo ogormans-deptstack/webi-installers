@@ -14,10 +14,14 @@ const (
 	OSDarwin  OS = "darwin"
 	OSLinux   OS = "linux"
 	OSWindows OS = "windows"
-	OSFreeBSD OS = "freebsd"
-	OSSunOS   OS = "sunos"
-	OSAIX     OS = "aix"
-	OSAndroid OS = "android"
+	OSFreeBSD   OS = "freebsd"
+	OSOpenBSD   OS = "openbsd"
+	OSNetBSD    OS = "netbsd"
+	OSDragonFly OS = "dragonfly"
+	OSSunOS     OS = "sunos"
+	OSAIX       OS = "aix"
+	OSAndroid   OS = "android"
+	OSPlan9     OS = "plan9"
 
 	// POSIX compatibility levels — used when a package is a shell script
 	// or otherwise OS-independent for POSIX systems.
@@ -37,12 +41,17 @@ const (
 	ArchARM64   Arch = "aarch64"
 	ArchARMv7   Arch = "armv7"
 	ArchARMv6   Arch = "armv6"
+	ArchARMv5   Arch = "armv5"
 	ArchX86     Arch = "x86"
 	ArchPPC64LE Arch = "ppc64le"
 	ArchPPC64   Arch = "ppc64"
+	ArchRISCV64 Arch = "riscv64"
 	ArchS390X   Arch = "s390x"
-	ArchMIPS64  Arch = "mips64"
-	ArchMIPS    Arch = "mips"
+	ArchLoong64 Arch = "loong64"
+	ArchMIPS64LE Arch = "mips64le"
+	ArchMIPS64   Arch = "mips64"
+	ArchMIPSLE   Arch = "mipsle"
+	ArchMIPS     Arch = "mips"
 
 	// Universal (fat) binary architectures for macOS.
 	ArchUniversal1 Arch = "universal1" // PPC + x86 (Rosetta 1 era)
@@ -77,6 +86,8 @@ const (
 	FormatPkg    Format = ".pkg"
 	FormatAppZip Format = ".app.zip"
 	Format7z     Format = ".7z"
+	FormatDeb    Format = ".deb"
+	FormatRPM    Format = ".rpm"
 	FormatSh     Format = ".sh"
 	FormatGit    Format = ".git"
 )

@@ -48,11 +48,18 @@ func Filename(name string) Result {
 		arch = buildmeta.ArchARM64
 	}
 
+	format := detectFormat(lower)
+
+	// .deb and .rpm are Linux-only package formats.
+	if os == "" && (format == buildmeta.FormatDeb || format == buildmeta.FormatRPM) {
+		os = buildmeta.OSLinux
+	}
+
 	return Result{
 		OS:     os,
 		Arch:   arch,
 		Libc:   detectLibc(lower),
-		Format: detectFormat(lower),
+		Format: format,
 	}
 }
 
@@ -67,13 +74,17 @@ var osPatterns = []struct {
 	os      buildmeta.OS
 	pattern *regexp.Regexp
 }{
-	{buildmeta.OSDarwin, regexp.MustCompile(`(?i)` + b + `(?:darwin|macos|osx|os-x|apple)` + bEnd)},
+	{buildmeta.OSDarwin, regexp.MustCompile(`(?i)(?:` + b + `(?:darwin|macos|osx|os-x|apple)` + bEnd + `|` + b + `mac` + bEnd + `)`)},
 	{buildmeta.OSLinux, regexp.MustCompile(`(?i)` + b + `linux` + bEnd)},
 	{buildmeta.OSWindows, regexp.MustCompile(`(?i)` + b + `(?:windows|win(?:32|64|dows)?)` + bEnd + `|\.exe(?:\.xz)?$|\.msi$`)},
 	{buildmeta.OSFreeBSD, regexp.MustCompile(`(?i)` + b + `freebsd` + bEnd)},
+	{buildmeta.OSOpenBSD, regexp.MustCompile(`(?i)` + b + `openbsd` + bEnd)},
+	{buildmeta.OSNetBSD, regexp.MustCompile(`(?i)` + b + `netbsd` + bEnd)},
+	{buildmeta.OSDragonFly, regexp.MustCompile(`(?i)` + b + `dragonfly(?:bsd)?` + bEnd)},
 	{buildmeta.OSSunOS, regexp.MustCompile(`(?i)` + b + `(?:sunos|solaris|illumos)` + bEnd)},
 	{buildmeta.OSAIX, regexp.MustCompile(`(?i)` + b + `aix` + bEnd)},
 	{buildmeta.OSAndroid, regexp.MustCompile(`(?i)` + b + `android` + bEnd)},
+	{buildmeta.OSPlan9, regexp.MustCompile(`(?i)` + b + `plan9` + bEnd)},
 }
 
 func detectOS(lower string) buildmeta.OS {
@@ -92,24 +103,31 @@ var archPatterns = []struct {
 	arch    buildmeta.Arch
 	pattern *regexp.Regexp
 }{
+	// Universal/fat binaries before specific arches.
+	{buildmeta.ArchUniversal2, regexp.MustCompile(`(?i)` + b + `(?:universal2?|fat)` + bEnd)},
 	// amd64 micro-levels before baseline — "amd64v3" must not fall through to amd64.
 	{buildmeta.ArchAMD64v4, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v4|amd64v4|v4-amd64)`)},
 	{buildmeta.ArchAMD64v3, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v3|amd64v3|v3-amd64)`)},
 	{buildmeta.ArchAMD64v2, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v2|amd64v2|v2-amd64)`)},
 	// amd64 baseline before x86 — "x86_64" must not match as x86.
-	{buildmeta.ArchAMD64, regexp.MustCompile(`(?i)(?:x86[_-]64|amd64|x64|64-bit)`)},
+	{buildmeta.ArchAMD64, regexp.MustCompile(`(?i)(?:x86[_-]64|amd64|x64|64-?bit)`)},
 	// arm64 before armv7/armv6 — "aarch64" must not match as arm.
 	{buildmeta.ArchARM64, regexp.MustCompile(`(?i)(?:aarch64|arm64|armv8)`)},
-	{buildmeta.ArchARMv7, regexp.MustCompile(`(?i)(?:armv7l?|arm-?v7|arm32)`)},
+	{buildmeta.ArchARMv7, regexp.MustCompile(`(?i)(?:armv7l?|arm-?v7|arm7|arm32|armhf)`)},
 	{buildmeta.ArchARMv6, regexp.MustCompile(`(?i)(?:armv6l?|arm-?v6|aarch32|` + b + `arm` + bEnd + `)`)},
+	{buildmeta.ArchARMv5, regexp.MustCompile(`(?i)(?:armv5)`)},
 	// ppc64le before ppc64.
 	{buildmeta.ArchPPC64LE, regexp.MustCompile(`(?i)ppc64le`)},
 	{buildmeta.ArchPPC64, regexp.MustCompile(`(?i)ppc64`)},
+	{buildmeta.ArchRISCV64, regexp.MustCompile(`(?i)riscv64`)},
 	{buildmeta.ArchS390X, regexp.MustCompile(`(?i)s390x`)},
+	{buildmeta.ArchLoong64, regexp.MustCompile(`(?i)loong(?:arch)?64`)},
+	{buildmeta.ArchMIPS64LE, regexp.MustCompile(`(?i)mips64(?:el|le)`)},
 	{buildmeta.ArchMIPS64, regexp.MustCompile(`(?i)mips64`)},
+	{buildmeta.ArchMIPSLE, regexp.MustCompile(`(?i)mips(?:el|le)`)},
 	{buildmeta.ArchMIPS, regexp.MustCompile(`(?i)` + b + `mips` + bEnd)},
 	// x86 last — must not steal x86_64.
-	{buildmeta.ArchX86, regexp.MustCompile(`(?i)(?:` + b + `x86` + bEnd + `|i[3-6]86|32-bit)`)},
+	{buildmeta.ArchX86, regexp.MustCompile(`(?i)(?:` + b + `x86` + bEnd + `|i[3-6]86|` + b + `386` + bEnd + `|32-?bit)`)},
 }
 
 func detectArch(lower string) buildmeta.Arch {
@@ -165,6 +183,8 @@ var formatSuffixes = []struct {
 	{".exe", buildmeta.FormatExe},
 	{".msi", buildmeta.FormatMSI},
 	{".dmg", buildmeta.FormatDMG},
+	{".deb", buildmeta.FormatDeb},
+	{".rpm", buildmeta.FormatRPM},
 	{".pkg", buildmeta.FormatPkg},
 }
 

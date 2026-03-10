@@ -56,8 +56,8 @@ func Open(root string) (*Dir, error) {
 	return d, nil
 }
 
-// activePath returns the absolute path of the currently active slot.
-func (d *Dir) activePath() (string, error) {
+// ActivePath returns the absolute path of the currently active slot.
+func (d *Dir) ActivePath() (string, error) {
 	target, err := os.Readlink(filepath.Join(d.root, "active"))
 	if err != nil {
 		return "", fmt.Errorf("rawcache: read active symlink: %w", err)
@@ -79,7 +79,7 @@ func (d *Dir) standbySlot() (string, error) {
 
 // Has reports whether a release file exists in the active slot.
 func (d *Dir) Has(tag string) bool {
-	active, err := d.activePath()
+	active, err := d.ActivePath()
 	if err != nil {
 		return false
 	}
@@ -90,7 +90,7 @@ func (d *Dir) Has(tag string) bool {
 // Latest returns the newest tag from the active slot.
 // Returns "" if no latest marker exists.
 func (d *Dir) Latest() string {
-	active, err := d.activePath()
+	active, err := d.ActivePath()
 	if err != nil {
 		return ""
 	}
@@ -103,7 +103,7 @@ func (d *Dir) Latest() string {
 
 // Read returns the raw cached data for a tag from the active slot.
 func (d *Dir) Read(tag string) ([]byte, error) {
-	active, err := d.activePath()
+	active, err := d.ActivePath()
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (d *Dir) Read(tag string) ([]byte, error) {
 // Put writes a release file to the active slot. The write is atomic
 // (temp file + rename).
 func (d *Dir) Put(tag string, data []byte) error {
-	active, err := d.activePath()
+	active, err := d.ActivePath()
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func (d *Dir) Merge(tag string, data []byte) (string, error) {
 
 // SetLatest updates the _latest marker in the active slot.
 func (d *Dir) SetLatest(tag string) error {
-	active, err := d.activePath()
+	active, err := d.ActivePath()
 	if err != nil {
 		return err
 	}
