@@ -329,6 +329,91 @@ the website/cheat sheets (if it ever did — that may be a separate app).
 
 ## Key Design Decisions
 
+### Package Configuration (`releases.conf`)
+
+Each package has a `{pkg}/releases.conf` — a flat `key = value` file parsed by
+`internal/installerconf`. This replaces the per-package `releases.js` from Node.js.
+
+```
+source = github
+owner = BurntSushi
+repo = ripgrep
+```
+
+Source types: `github`, `gitea`, `gittag`, `nodedist`, `chromedist`, `flutterdist`,
+`golang`, `gpgdist`, `hashicorp`, `iterm2dist`, `juliadist`, `mariadbdist`, `zigdist`.
+
+**Multi-source packages** (like `node`, which merges official + unofficial builds)
+are not yet supported by the config format. Current workaround: separate packages
+(`node-official`, `node-unofficial`). Redesign needed — see Open Questions.
+
+Unknown keys go into `conf.Extra` (a `map[string]string`), which is used for
+source-specific settings like `product = terraform` (hashicorp) or
+`alias_of = dashcore` (aliases).
+
+### Asset Model and `Extra` Field
+
+`storage.Asset` represents a single downloadable file. Key fields:
+
+```go
+type Asset struct {
+    Filename string  // "bat-v0.26.1-x86_64-unknown-linux-musl.tar.gz"
+    Version  string  // "v0.26.1"
+    OS       string  // "linux"
+    Arch     string  // "x86_64"
+    Libc     string  // "musl"
+    Format   string  // ".tar.gz"
+    Channel  string  // "stable"
+    Extra    string  // "" (base) or "rocm", "jetpack5", "fxdependent"
+    Download string  // full URL
+    ...
+}
+```
+
+The `Extra` field captures **build variants** — assets that target a specific
+hardware or runtime configuration beyond OS/arch/libc:
+
+- `rocm` — AMD GPU compute (ollama)
+- `jetpack5`, `jetpack6` — NVIDIA Jetson SDK (ollama)
+- `fxdependent`, `fxdependentWinDesktop` — .NET framework-dependent (pwsh)
+- `profile` — debug profiling build (bun)
+- `source` — source archive, not a binary
+
+The resolver **deprioritizes** assets with non-empty `Extra` — they're only
+selected when the user explicitly requests that variant (e.g., `?variant=rocm`).
+
+**Not a variant — arch micro-levels**: Bun's "baseline" is actually `amd64` (v1),
+and the non-baseline is `amd64v3`. These use the `Arch` field directly, and the
+resolver's existing fallback chain (`amd64v3` → `amd64v2` → `amd64`) handles
+selection naturally.
+
+### Format Filtering
+
+Webi installs from **extractable archives** (tar.gz, tar.xz, zip, 7z) and
+**bare binaries**. Non-extractable installer formats are filtered out:
+
+- `.pkg` (macOS installer)
+- `.msi` (Windows installer)
+- `.deb`, `.rpm` (Linux package managers)
+- `.dmg` (macOS disk image)
+- `.sh` (self-extracting installer scripts)
+- `.msixbundle`, `.AppImage`
+- `.exe` when it's an installer, not the actual binary
+
+This filtering happens at classification time (`isMetaAsset` / format checks)
+so these assets never reach storage.
+
+### Legacy Export Filtering
+
+During migration, `fsstore` writes JSON in the Node.js `_cache/` format. The
+Node.js server reads this directly. Two filters apply at export time:
+
+1. **Build variants**: Assets with non-empty `Extra` are stripped (Node.js
+   doesn't know about rocm/jetpack/fxdependent)
+2. **Format**: Any formats that leaked through classification are stripped
+
+This keeps the primary Go pipeline complete while the legacy path stays compat.
+
 ### Version: Go 1.26+
 
 Using `http.ServeMux` with `PathValue` for routing (available since Go 1.22).
@@ -354,10 +439,10 @@ behavior must be preserved for backward compatibility.
 
 ## Open Questions
 
-- [ ] Should `webicached` shell out to `node releases.js` during migration, or
-  do we rewrite every releases.js as Go config/code from the start? (Shelling
-  out preserves hot-add compatibility during the transition — a new `releases.js`
-  just works without any Go changes.)
+- [ ] **Multi-source config**: `node` needs both official + unofficial URLs.
+  Current releases.conf only supports one `source`. Proposed:
+  `github_source = owner repo`, `nodedist_source = url`, `git_source = url` —
+  multiple source directives per package, not mutually exclusive.
 - [ ] What's the deployment topology? Single binary serving both roles? Separate
   processes? Kubernetes pods?
 - [ ] Rate limiting for GitHub API calls in `webicached` — how to coordinate
@@ -368,6 +453,15 @@ behavior must be preserved for backward compatibility.
 - [ ] CPU micro-arch detection: how should POSIX and PowerShell bootstrap scripts
   detect amd64v1/v2/v3/v4? Check /proc/cpuinfo flags (Linux), sysctl
   hw.optional (macOS), .NET intrinsics (Windows)?
+- [ ] **Variant selection API**: How do users request variant builds? Query param
+  (`?variant=rocm`)? User-Agent hint? Per-installer default override?
+
+## Resolved Questions
+
+- **Shell out to `node releases.js`?** No — all source types are implemented in
+  Go. The Go pipeline fetches and classifies everything directly.
+- **Asset.Extra vs new Variant type?** `Extra` (string) serves the purpose.
+  The resolver already deprioritizes non-empty Extra. Keep it simple.
 
 ## Current Node.js Architecture (Reference)
 
