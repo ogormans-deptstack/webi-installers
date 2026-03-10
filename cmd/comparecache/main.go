@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/webinstall/webi-installers/internal/classify"
 	"github.com/webinstall/webi-installers/internal/lexver"
 )
 
@@ -416,7 +417,7 @@ func categorize(d *packageDiff) {
 	metaOnlyInLive := 0
 	nonMetaOnlyInLive := 0
 	for _, f := range d.OnlyInLive {
-		if isMetaFile(f) {
+		if classify.IsMetaAsset(f) {
 			metaOnlyInLive++
 		} else {
 			nonMetaOnlyInLive++
@@ -425,7 +426,7 @@ func categorize(d *packageDiff) {
 	metaOnlyInGo := 0
 	nonMetaOnlyInGo := 0
 	for _, f := range d.OnlyInGo {
-		if isMetaFile(f) {
+		if classify.IsMetaAsset(f) {
 			metaOnlyInGo++
 		} else {
 			nonMetaOnlyInGo++
@@ -463,79 +464,30 @@ func categorize(d *packageDiff) {
 // isLiveNoise returns true for filenames that the Node.js cache keeps
 // but Go intentionally filters out. Pre-filtering these from the live
 // side prevents them from appearing as live-extra-assets noise.
+//
+// This includes everything classify.IsMetaAsset catches plus formats
+// that Go's legacy export strips (.deb, .rpm, etc.).
 func isLiveNoise(name string) bool {
+	if classify.IsMetaAsset(name) {
+		return true
+	}
+
 	lower := strings.ToLower(name)
 
-	// Formats Go filters from legacy export.
+	// Formats Go filters from legacy export but Node.js keeps.
 	for _, suffix := range []string{
-		".deb", ".rpm", ".asc", ".sig", ".gpg",
-		".sbom", ".spdx", ".pem", ".sigstore",
-		".sha256", ".sha256sum", ".sha512", ".sha512sum",
-		".md5", ".md5sum",
-		".d.ts", ".pub",
+		".deb", ".rpm", ".gpg",
 	} {
 		if strings.HasSuffix(lower, suffix) {
 			return true
 		}
 	}
 
-	// Exact basenames.
-	base := lower
-	if i := strings.LastIndex(base, "/"); i >= 0 {
-		base = base[i+1:]
-	}
-	for _, exact := range []string{
-		"sha256sums", "sha512sums",
-		"checksums.txt", "install.sh", "install.ps1",
-	} {
-		if base == exact {
-			return true
-		}
-	}
-
-	// Substring patterns.
-	for _, pat := range []string{
-		"checksums", "sha256sum", "sha512sum",
-	} {
-		if strings.Contains(lower, pat) {
-			return true
-		}
-	}
-
-	// .txt files (release notes, checksums, etc.) — not installable.
-	if strings.HasSuffix(lower, ".txt") {
+	// Source tarballs (e.g. gitea-src-1.25.4.tar.gz).
+	if strings.Contains(lower, "-src-") || strings.HasPrefix(lower, "src-") {
 		return true
 	}
 
-	// Source tarballs (e.g. gitea-src-1.25.4.tar.gz) — not installable.
-	if strings.Contains(lower, "-src-") || strings.HasPrefix(lower, "src-") ||
-		lower == "src.tar.gz" || lower == "src.zip" {
-		return true
-	}
-
-	return false
-}
-
-func isMetaFile(name string) bool {
-	lower := strings.ToLower(name)
-	for _, suffix := range []string{
-		".sha256", ".sha256sum", ".sha512", ".sha512sum",
-		".md5", ".md5sum", ".sig", ".asc", ".pem",
-		"checksums.txt", "sha256sums", "sha512sums",
-		".sbom", ".spdx", ".json.sig", ".sigstore",
-		".d.ts", ".pub",
-	} {
-		if strings.HasSuffix(lower, suffix) {
-			return true
-		}
-	}
-	for _, contains := range []string{
-		"checksums", "sha256sum", "sha512sum",
-	} {
-		if strings.Contains(lower, contains) {
-			return true
-		}
-	}
 	return false
 }
 

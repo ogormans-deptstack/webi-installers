@@ -1449,39 +1449,8 @@ func classifyZigDist(d *rawcache.Dir) ([]storage.Asset, error) {
 
 // --- Helpers ---
 
-func isMetaAsset(name string) bool {
-	lower := strings.ToLower(name)
-	for _, suffix := range []string{
-		".txt",
-		".sha256", ".sha256sum", ".sha512", ".sha512sum",
-		".md5", ".md5sum", ".sig", ".asc", ".pem",
-		".sbom", ".spdx", ".json.sig", ".sigstore",
-		"_src.tar.gz", "_src.tar.xz", "_src.zip",
-		"-src.tar.gz", "-src.tar.xz", "-src.zip",
-		".d.ts", ".pub",
-	} {
-		if strings.HasSuffix(lower, suffix) {
-			return true
-		}
-	}
-	for _, contains := range []string{
-		"checksums", "sha256sum", "sha512sum",
-		"buildable-artifact",
-		".LICENSE", ".README",
-	} {
-		if strings.Contains(lower, contains) {
-			return true
-		}
-	}
-	for _, exact := range []string{
-		"install.sh", "install.ps1", "compat.json",
-	} {
-		if lower == exact {
-			return true
-		}
-	}
-	return false
-}
+// isMetaAsset delegates to classify.IsMetaAsset.
+var isMetaAsset = classify.IsMetaAsset
 
 // tagVariants applies package-specific variant tags to classified assets.
 // Each case delegates to a per-installer package under internal/releases/.

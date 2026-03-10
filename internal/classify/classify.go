@@ -205,3 +205,39 @@ func detectFormat(lower string) buildmeta.Format {
 	}
 	return ""
 }
+
+// IsMetaAsset returns true if the filename is a non-installable meta file
+// (checksums, signatures, source tarballs, documentation, etc.).
+func IsMetaAsset(name string) bool {
+	lower := strings.ToLower(name)
+	for _, suffix := range []string{
+		".txt",
+		".sha256", ".sha256sum", ".sha512", ".sha512sum",
+		".md5", ".md5sum", ".sig", ".asc", ".pem",
+		".sbom", ".spdx", ".json.sig", ".sigstore",
+		"_src.tar.gz", "_src.tar.xz", "_src.zip",
+		"-src.tar.gz", "-src.tar.xz", "-src.zip",
+		".d.ts", ".pub",
+	} {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	for _, substr := range []string{
+		"checksums", "sha256sum", "sha512sum",
+		"buildable-artifact",
+		".LICENSE", ".README",
+	} {
+		if strings.Contains(lower, substr) {
+			return true
+		}
+	}
+	for _, exact := range []string{
+		"install.sh", "install.ps1", "compat.json",
+	} {
+		if lower == exact {
+			return true
+		}
+	}
+	return false
+}
