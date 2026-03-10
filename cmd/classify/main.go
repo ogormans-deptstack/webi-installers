@@ -537,9 +537,9 @@ type zigRelease struct {
 }
 
 type zigPlatform struct {
-	Tarball string `json:"tarball"`
-	Shasum  string `json:"shasum"`
-	Size    int64  `json:"size"`
+	Tarball string      `json:"tarball"`
+	Shasum  string      `json:"shasum"`
+	Size    json.Number `json:"size"`
 }
 
 func classifyZigDist(pkg string, d *rawcache.Dir) ([]Dist, error) {
@@ -550,33 +550,23 @@ func classifyZigDist(pkg string, d *rawcache.Dir) ([]Dist, error) {
 
 	var dists []Dist
 	for _, data := range releases {
-		// Parse the raw JSON to get version, date, and platform entries.
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
+		// Parse the cached JSON which has version, date, platforms.
+		var rel struct {
+			Version   string                  `json:"version"`
+			Date      string                  `json:"date"`
+			Platforms map[string]zigPlatform   `json:"platforms"`
+		}
+		if err := json.Unmarshal(data, &rel); err != nil {
 			continue
 		}
 
-		var version, date string
-		if v, ok := raw["version"]; ok {
-			json.Unmarshal(v, &version)
-		}
-		if d, ok := raw["date"]; ok {
-			json.Unmarshal(d, &date)
-		}
-
 		channel := "stable"
-		if strings.Contains(version, "+") || strings.Contains(version, "-") || !strings.Contains(version, ".") {
+		if strings.Contains(rel.Version, "+") || strings.Contains(rel.Version, "-") || !strings.Contains(rel.Version, ".") {
 			channel = "beta"
 		}
 
-		for key, val := range raw {
-			switch key {
-			case "version", "date", "notes", "src":
-				continue
-			}
-
-			var plat zigPlatform
-			if err := json.Unmarshal(val, &plat); err != nil || plat.Tarball == "" {
+		for key, plat := range rel.Platforms {
+			if plat.Tarball == "" {
 				continue
 			}
 
@@ -592,7 +582,7 @@ func classifyZigDist(pkg string, d *rawcache.Dir) ([]Dist, error) {
 
 			dists = append(dists, Dist{
 				Package:  pkg,
-				Version:  version,
+				Version:  rel.Version,
 				Channel:  channel,
 				OS:       os_,
 				Arch:     arch,
@@ -600,8 +590,8 @@ func classifyZigDist(pkg string, d *rawcache.Dir) ([]Dist, error) {
 				Download: plat.Tarball,
 				Filename: filepath.Base(plat.Tarball),
 				SHA256:   plat.Shasum,
-				Size:     plat.Size,
-				Date:     date,
+				Size:     zigSize(plat.Size),
+				Date:     rel.Date,
 			})
 		}
 	}
@@ -631,6 +621,11 @@ func normalizeZigArch(a string) string {
 	default:
 		return a
 	}
+}
+
+func zigSize(n json.Number) int64 {
+	v, _ := n.Int64()
+	return v
 }
 
 func normalizeZigOS(o string) string {

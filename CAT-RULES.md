@@ -57,6 +57,28 @@ source archives (`_src.tar.gz`), and `buildable-artifact`.
 - Node "odd major = beta" heuristic — v15, v17, v19, v21, v23 are "current" not LTS
 - Go version prefix: stripped `go` from `go1.23.6` → `1.23.6` for clean parsing
 
+## Batch 2 (zig, flutter, chromedriver, terraform, julia, iterm2, mariadb, gpg, serviceman, aliasman)
+
+### Zig Fetcher Fix
+
+The zig upstream API returns `"size"` as a JSON string, not a number.
+Changed `Platform.Size` from `int64` to `json.Number` to avoid unmarshal failures.
+Also changed `Platforms` tag from `json:"-"` to `json:"platforms,omitempty"` so
+platform data is preserved in cache.
+
+### Source-Only Packages
+
+serviceman and aliasman have GitHub releases with empty `assets:[]`. These are
+source-only repos that install via `go install` or script download, not binary
+releases. The classifier correctly produces 0 distributables for them — they
+don't belong in the binary CSV.
+
+### Flutter Arch Detection
+
+Early Flutter releases (pre-2020) had no arch-specific builds — single
+platform SDK. No arch in filename → empty arch in CSV. This is correct;
+the installer would default to x86_64 on supported platforms.
+
 ### TODO for Next Batches
 
 - Hugo "extended" variant should be captured in `extra` column

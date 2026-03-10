@@ -22,14 +22,14 @@ type Release struct {
 	Version   string              `json:"version"` // set by us from the key or inner "version" field
 	Date      string              `json:"date"`
 	Notes     string              `json:"notes,omitempty"`
-	Platforms map[string]Platform `json:"-"` // "x86_64-linux" → Platform
+	Platforms map[string]Platform `json:"platforms,omitempty"` // "x86_64-linux" → Platform
 }
 
 // Platform is one downloadable artifact for a specific arch-os combo.
 type Platform struct {
-	Tarball string `json:"tarball"`
-	Shasum  string `json:"shasum"`
-	Size    int64  `json:"size"`
+	Tarball string      `json:"tarball"`
+	Shasum  string      `json:"shasum"`
+	Size    json.Number `json:"size"` // upstream sends as string
 }
 
 // Fetch retrieves the Zig release index.
