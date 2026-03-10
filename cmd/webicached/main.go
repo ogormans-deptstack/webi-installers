@@ -613,6 +613,7 @@ func expandNodeFile(pkg, version, channel, date string, lts bool, baseURL, file 
 		"x64": "x86_64", "x86": "x86", "arm64": "aarch64",
 		"armv7l": "armv7", "armv6l": "armv6",
 		"ppc64": "ppc64", "ppc64le": "ppc64le", "s390x": "s390x",
+		"riscv64": "riscv64", "loong64": "loong64",
 	}
 
 	os_ := osMap[parts[0]]
@@ -642,6 +643,8 @@ func expandNodeFile(pkg, version, channel, date string, lts bool, baseURL, file 
 		formats = []string{".msi"}
 	case "exe":
 		formats = []string{".exe"}
+	case "7z":
+		formats = []string{".7z"}
 	case "":
 		formats = []string{".tar.gz", ".tar.xz"}
 	default:

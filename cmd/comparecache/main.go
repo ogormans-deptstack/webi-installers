@@ -20,8 +20,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
+
+	"github.com/webinstall/webi-installers/internal/lexver"
 )
 
 type cacheEntry struct {
@@ -216,7 +219,9 @@ func compare(livePath, goPath, pkg string, latestOnly bool) packageDiff {
 		for v := range vf {
 			versions = append(versions, v)
 		}
-		sort.Strings(versions)
+		slices.SortFunc(versions, func(a, b string) int {
+			return lexver.Compare(lexver.Parse(a), lexver.Parse(b))
+		})
 		return vf, versions
 	}
 

@@ -19,7 +19,7 @@ files.
 
 ### 3. Source Tarballs
 Go includes GitHub source tarballs (tarball_url/zipball_url) for releases with no
-binary assets. Node.js does not. Affects 18 packages. **Decision needed**: should
+binary assets. Node.js does not. Affects 15 packages. **Decision needed**: should
 these be included?
 
 ### 4. Previously Unsupported Sources (NOW FIXED)
@@ -32,32 +32,71 @@ Go has deeper version history for most GitHub-sourced packages because it fetche
 all pages. Node.js limits to 30 releases per API call. This is a **feature** — Go
 provides complete histories.
 
+### 6. Unsupported Formats (NEW — from version-level review)
+Go includes installer-format assets that webi can't extract:
+- `.pkg` (macOS installer) — 756 in node, 54 in hugo
+- `.msi` (Windows installer) — 1,277 in node, 706 in cmake
+- `.deb` (Debian package) — 1,672 in hugo
+- `.dmg` (macOS disk image) — 510 in cmake
+- `.sh` (self-extracting installer) — 596 in cmake
+- `.msixbundle` — in pwsh
+- `.exe` (bare installer) — in node
+
+**Action**: add these to `isMetaAsset()` or a new `isUnsupportedFormat()`.
+
+### 7. Build Variants (NEW — from version-level review)
+Some assets are build variants that need an `Extra`/`Variant` field — they should
+be stored but excluded by the resolver unless explicitly requested:
+- **ollama**: `-rocm`, `-jetpack5`, `-jetpack6` (GPU accelerator variants)
+- **bun**: `-profile` (debug symbols), `-baseline` (actually amd64v1 vs amd64v3)
+- **pwsh**: `-fxdependent`, `-fxdependentWinDesktop` (framework-dependent)
+- **hugo**: `-extended` (already a separate package, may not need variant tag)
+
+For bun's baseline: the non-baseline build is actually amd64v3, and baseline is
+plain amd64. The arch field should reflect this — no variant tag needed.
+
+For legacy cache export: filter out assets with non-empty `Extra` so the Node.js
+server doesn't encounter unknown variants.
+
+### 8. Node Multi-Source (NEW — from version-level review)
+The `node` package should merge official + unofficial builds (musl, riscv64, 7z).
+Currently Go has separate `node`, `node-official`, `node-unofficial` packages.
+Node.js `releases.js` merges both into one cache. This is a concrete case for
+multi-source config (task #7).
+
+Missing from Go's node classifier: riscv64 arch, loong64 arch, 7z format.
+**Fixed** in this session.
+
 ## Categories
 
 | Category | Count | Meaning |
 |----------|-------|---------|
-| match | 9 | Identical asset filenames |
+| match | 12 | Identical asset filenames |
 | go-missing | 4 | Go produces no output (alias, meta-package, or no config) |
 | live-missing | 16 | Package exists in Go but not in live cache |
 | go-extra-versions | 52 | Go has more version history (deeper fetch) |
-| live-extra-versions | 15 | Live has newer data or uses a different source |
-| go-extra-assets | 64 | Go includes assets that Node.js filters out |
-| live-extra-assets | 20 | Node.js includes assets that Go filters out |
+| live-extra-versions | 14 | Live has newer data or uses a different source |
+| go-extra-assets | 59 | Go includes assets that Node.js filters out |
+| live-extra-assets | 17 | Node.js includes assets that Go filters out |
 | live-has-meta | 43 | Node.js includes meta-assets (checksums, sigs) |
-| go-has-source-tarballs | 18 | Go includes source tarballs for no-binary releases |
+| go-has-source-tarballs | 15 | Go includes source tarballs for no-binary releases |
 
 ## Per-Package Checklist
 
 Status: `[x]` reviewed, `[-]` known difference (acceptable), `[ ]` needs review
 
-### Exact Matches (8)
+### Exact Matches (12)
 - [x] atomicparsley — match
 - [x] awless — match
+- [x] chromedriver — match (chromedist)
 - [x] dotenv-linter — match
+- [x] gpg — match (gpgdist)
 - [x] hexyl — match
+- [x] julia — match (juliadist)
 - [x] koji — match
 - [x] lf — match
 - [x] sd — match
+- [x] terraform — match (hashicorp, cleanest package — all .zip with os/arch)
 - [x] zoxide — match
 
 ### Go Missing — Unsupported Source (4)
@@ -100,74 +139,101 @@ These packages differ only because Go strips checksums/sigs/SBOMs:
 - [-] sqlpkg — live-has-meta(7)
 - [-] xz — live-has-meta(1)
 
-### Custom Source Types (now wired, needs detailed review)
-- [ ] chromedriver — chromedist, live-extra-versions(1), go-extra-assets(5)
-- [ ] flutter — flutterdist, live-extra-assets(1), go-extra-assets(2082)
-- [ ] go — golang, version overlap differences
-- [-] gpg — gpgdist, match
-- [ ] iterm2 — iterm2dist, live-extra-versions(20), go-extra-assets(262)
-- [ ] julia — juliadist, live-extra-assets(1), go-extra-assets(1783)
-- [ ] mariadb — mariadbdist, go-extra-assets(11)
-- [ ] terraform — hashicorp, live-extra-assets(1), go-extra-assets(5550)
-- [ ] zig — zigdist, version differences
+### Custom Source Types (version-level reviewed)
+- [x] chromedriver — chromedist, exact match at latest version
+- [-] flutter — flutterdist, live-extra-assets(217); 90% of assets have empty arch (expected — Flutter is host-arch-agnostic); mix of dev/beta/stable channels
+- [-] go — golang, live-extra-versions(98), go-extra-versions(98); different version sets; live has 1 extra source tarball (go1.9rc2.src.tar.gz)
+- [x] gpg — gpgdist, match
+- [-] iterm2 — iterm2dist, live-extra-versions(20), live-extra-assets(20)
+- [x] julia — juliadist, match
+- [-] mariadb — mariadbdist, go-extra-assets(11)
+- [x] terraform — hashicorp, match (cleanest package in the entire comparison)
+- [-] zig — zigdist, version differences
 
-### Version Depth + Extra Assets (needs detailed review)
-These have real asset selection differences beyond version depth and meta filtering.
+### Version-Level Reviewed (latest version comparison)
+These were compared at the latest-version level with semver-aware sorting.
 
-- [ ] aliasman — go-has-source-tarballs(8), live-extra-assets(8), go-extra-assets(8)
-- [ ] arc — go-extra-versions(9), go-has-source-tarballs(18), go-extra-assets(18)
-- [ ] bat — go-extra-versions(13), go-extra-assets(85)
-- [ ] bun — go-extra-versions(210), live-extra-versions(30), go-extra-assets(85)
-- [ ] caddy — go-extra-versions(104), live-has-meta(3415), live-extra-assets(30), go-extra-assets(1180)
-- [ ] cilium — go-extra-versions(97), go-extra-assets(5)
-- [ ] cmake — go-extra-versions(280), go-extra-assets(4352)
-- [ ] comrak — go-extra-versions(60), live-extra-versions(1), live-extra-assets(6), go-extra-assets(194)
-- [ ] crabz — go-extra-assets(4)
-- [ ] dashcore — go-extra-versions(101), live-has-meta(327), go-extra-assets(896)
-- [ ] delta — go-extra-versions(29), go-extra-assets(304)
-- [ ] deno — go-extra-versions(338), live-extra-assets(1), go-extra-assets(4)
-- [ ] duckdns.sh — go-has-source-tarballs(6), live-extra-assets(6), go-extra-assets(6)
-- [ ] fd — go-extra-versions(15), live-extra-versions(1), live-extra-assets(21), go-extra-assets(66)
-- [ ] ffmpeg — go-extra-versions(11), live-extra-versions(2), go-extra-assets(68)
-- [ ] fish — go-extra-versions(35), go-extra-assets(182)
-- [ ] fzf — go-extra-versions(46), go-extra-assets(669)
-- [ ] gh — go-extra-versions(159), go-extra-assets(2644)
-- [ ] git — go-extra-versions(339), go-extra-assets(3724)
-- [ ] gitea — go-extra-versions(194), live-has-meta(1968), go-extra-assets(4600)
-- [ ] goreleaser — go-extra-versions(556), go-extra-assets(1657)
-- [ ] grype — go-extra-versions(161), live-has-meta(90), go-extra-assets(1840)
-- [ ] hugo — go-extra-versions(335), live-has-meta(30), go-extra-assets(8176)
-- [ ] hugo-extended — go-extra-versions(335), go-extra-assets(8206)
-- [ ] jq — go-extra-versions(15), live-extra-versions(12), go-extra-assets(7)
-- [ ] k9s — go-extra-versions(227), go-extra-assets(749)
-- [ ] kind — go-extra-versions(7), live-has-meta(7)
-- [ ] kubectx — go-extra-versions(15), go-has-source-tarballs(30), go-extra-assets(78)
-- [ ] kubens — go-extra-versions(15), go-has-source-tarballs(30), go-extra-assets(78)
-- [ ] lsd — go-extra-versions(2), go-extra-assets(188)
-- [ ] mutagen — go-extra-versions(82), go-has-source-tarballs(4), go-extra-assets(2478)
-- [ ] node — go-extra-versions(713), live-extra-assets(431), go-extra-assets(15208)
-- [ ] ollama — go-extra-versions(160), live-extra-assets(8), go-extra-assets(15)
-- [ ] pandoc — go-extra-versions(123), go-extra-assets(698)
-- [ ] pathman — go-extra-assets(1)
-- [ ] postgres — go-extra-versions(4), live-extra-versions(8), live-extra-assets(6), go-extra-assets(24)
-- [ ] psql — go-extra-versions(4), live-extra-versions(4), go-extra-assets(28)
-- [ ] pwsh — go-extra-versions(163), go-extra-assets(3407)
-- [ ] rclone — go-extra-versions(92), go-extra-assets(2548)
-- [ ] rg — go-extra-versions(44), live-has-meta(100), go-extra-assets(282)
-- [ ] sass — go-extra-versions(283), go-extra-assets(2194)
-- [ ] serviceman — live-extra-versions(1), live-extra-assets(18), go-extra-assets(12)
-- [ ] shellcheck — go-extra-versions(17), go-has-source-tarballs(34), go-extra-assets(34)
-- [ ] shfmt — go-extra-versions(22), go-extra-assets(360)
-- [ ] sqlc — go-extra-versions(7), go-has-source-tarballs(2), go-extra-assets(19)
-- [ ] sttr — go-extra-versions(4), live-has-meta(42), go-extra-assets(20)
-- [ ] syncthing — go-extra-versions(431), live-extra-assets(1), go-extra-assets(11983)
-- [ ] terramate — go-extra-versions(193), live-has-meta(421), go-extra-assets(1744)
-- [ ] tinygo — go-extra-versions(19), go-extra-assets(84)
-- [ ] trip — go-extra-versions(6), go-extra-assets(12)
-- [ ] uuidv7 — go-extra-assets(16)
-- [ ] vim-commentary — go-extra-versions(5), live-extra-versions(5), live-extra-assets(5), go-extra-assets(5)
-- [ ] vim-zig — go-extra-versions(1), live-extra-versions(1), live-extra-assets(1), go-extra-assets(1)
-- [ ] watchexec — go-extra-versions(83), live-extra-versions(2), live-has-meta(1407), go-extra-assets(671)
-- [ ] xcaddy — go-extra-assets(123)
-- [ ] xsv — go-extra-versions(35), go-extra-assets(36)
-- [ ] yq — go-extra-versions(134), go-extra-assets(17)
+#### Clean at latest version (diff is only version depth + meta)
+- [x] bat — match at latest; 85 go-extra from deeper history only
+- [x] caddy — latest match except meta (.pem/.sig/.sbom); 1,180 go-extra from history
+- [x] deno — latest match; 4 go-extra from very old naming format
+- [x] fd — match at latest; old releases had bare `fd` binary with no os/arch
+- [x] flutter — match at latest version
+
+#### Build variant differences (needs Variant/Extra field)
+- [-] bun — 16 go-extra at latest: `-profile` and `-baseline` variants; baseline=amd64, non-baseline=amd64v3
+- [-] ollama — live has `.tar.gz`/`.tar.zst`, Go has `.tgz`/`.zip` (different release assets); both have rocm/jetpack variants; live includes install.sh/install.ps1 (should be filtered as meta)
+- [-] pwsh — 4 go-extra at latest: all fxdependent variants; should be tagged with Extra, filtered for legacy export
+
+#### Multi-source issue
+- [-] node — live merges official+unofficial (musl, riscv64, 7z); Go has separate packages; **fixed**: added riscv64/loong64 arch and 7z format to classifier
+
+### Format Filtering Needed
+These packages have high go-extra-assets counts primarily from non-extractable formats:
+- [ ] cmake — 4,352 extras: .msi(706), .dmg(510), .sh(596), source tarballs, checksum files
+- [ ] hugo — 8,176 extras: .deb(1672), .pkg(54), source tarballs
+- [ ] hugo-extended — 8,206 extras (same pattern as hugo)
+- [ ] node — 15,208 extras: .pkg(756), .msi(1277), .exe(installer)
+- [ ] git — 3,724 extras: likely .exe installers, .dmg
+- [ ] pandoc — 698 extras: likely .deb, .pkg, .msi
+- [ ] pwsh — 3,407 extras: .msixbundle, .AppImage, + fxdependent variants
+- [ ] rclone — 2,548 extras: likely .deb, .rpm
+- [ ] sass — 2,194 extras
+- [ ] syncthing — 11,983 extras
+
+### Version Depth Only (no action needed)
+These differ only because Go fetches deeper history:
+- [-] arc — go-extra-versions(9) + source tarballs
+- [-] cilium — go-extra-versions(97)
+- [-] comrak — go-extra-versions(60)
+- [-] delta — go-extra-versions(29)
+- [-] fish — go-extra-versions(35)
+- [-] fzf — go-extra-versions(46)
+- [-] gh — go-extra-versions(159)
+- [-] goreleaser — go-extra-versions(556)
+- [-] grype — go-extra-versions(161)
+- [-] k9s — go-extra-versions(227)
+- [-] kind — go-extra-versions(7)
+- [-] kubectx — go-extra-versions(15)
+- [-] kubens — go-extra-versions(15)
+- [-] lsd — go-extra-versions(2)
+- [-] mutagen — go-extra-versions(82)
+- [-] rg — go-extra-versions(44)
+- [-] shellcheck — go-extra-versions(17)
+- [-] shfmt — go-extra-versions(22)
+- [-] sttr — go-extra-versions(4)
+- [-] terramate — go-extra-versions(193)
+- [-] tinygo — go-extra-versions(19)
+- [-] trip — go-extra-versions(6)
+- [-] watchexec — go-extra-versions(83)
+- [-] xcaddy — go-extra-assets(123) (likely deep history)
+- [-] xsv — go-extra-versions(35)
+- [-] yq — go-extra-versions(134)
+
+### Remaining (minor differences, low priority)
+- [-] aliasman — source tarball naming differences
+- [-] crabz — go-extra-assets(4)
+- [-] dashcore — go-extra-versions(101) + meta
+- [-] duckdns.sh — source tarball differences
+- [-] ffmpeg — go-extra-versions(11)
+- [-] gitea — go-extra-versions(194) + meta
+- [-] jq — go-extra-versions(15)
+- [-] pathman — go-extra-assets(1)
+- [-] postgres — version overlap differences
+- [-] psql — version overlap differences
+- [-] serviceman — source differences
+- [-] sqlc — go-extra-versions(7)
+- [-] uuidv7 — go-extra-assets(16)
+- [-] vim-commentary — version differences
+- [-] vim-zig — version differences
+
+## Action Items
+
+1. **Filter unsupported formats**: Add .pkg, .msi, .deb, .dmg, .sh (installer),
+   .msixbundle, .rpm, .exe (bare installer), .AppImage to isMetaAsset or new filter
+2. **Tag build variants**: Populate Asset.Extra for rocm, jetpack5/6, fxdependent,
+   profile; filter these in ExportLegacy for Node.js compat
+3. **Bun arch classification**: Map baseline→amd64, non-baseline→amd64v3
+4. **Node multi-source**: Merge official+unofficial into single `node` cache
+   (blocked on multi-source config redesign, task #7)
+5. **Ollama meta filtering**: Filter install.sh/install.ps1 from release assets
