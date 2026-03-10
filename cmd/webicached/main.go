@@ -597,7 +597,7 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 			tag := rel.TagName
 			if rel.TarballURL != "" {
 				assets = append(assets, storage.Asset{
-					Filename: tag + ".tar.gz",
+					Filename: repo + "-" + tag + ".tar.gz",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
@@ -609,7 +609,7 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 			}
 			if rel.ZipballURL != "" {
 				assets = append(assets, storage.Asset{
-					Filename: tag + ".zip",
+					Filename: repo + "-" + tag + ".zip",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
