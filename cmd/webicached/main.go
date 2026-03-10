@@ -585,11 +585,20 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 		// Releases with no uploaded assets are source-only — use the
 		// API-provided tarball/zipball URLs. These can also be installed
 		// via `git clone --branch <tag>` as a fallback.
+		//
+		// The API's tarball_url redirects to:
+		//   codeload.github.com/{owner}/{repo}/legacy.tar.gz/refs/tags/{tag}
+		// which serves Content-Disposition with a filename like:
+		//   Owner-Repo-Tag-0-gCommitHash.tar.gz
+		// We use the API URL directly and construct the legacy filename
+		// pattern (without the commit hash, which isn't in the API data).
 		if len(rel.Assets) == 0 {
+			owner := conf.Owner
+			repo := conf.Repo
 			tag := rel.TagName
 			if rel.TarballURL != "" {
 				assets = append(assets, storage.Asset{
-					Filename: tag + ".tar.gz",
+					Filename: owner + "-" + repo + "-" + tag + ".tar.gz",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
@@ -601,7 +610,7 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 			}
 			if rel.ZipballURL != "" {
 				assets = append(assets, storage.Asset{
-					Filename: tag + ".zip",
+					Filename: owner + "-" + repo + "-" + tag + ".zip",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
