@@ -88,6 +88,8 @@ const (
 	Format7z     Format = ".7z"
 	FormatDeb    Format = ".deb"
 	FormatRPM    Format = ".rpm"
+	FormatSnap   Format = ".snap"
+	FormatAppx   Format = ".appx"
 	FormatSh     Format = ".sh"
 	FormatGit    Format = ".git"
 )

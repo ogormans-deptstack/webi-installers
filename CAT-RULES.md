@@ -79,10 +79,52 @@ Early Flutter releases (pre-2020) had no arch-specific builds — single
 platform SDK. No arch in filename → empty arch in CSV. This is correct;
 the installer would default to x86_64 on supported platforms.
 
-### TODO for Next Batches
+## Batch 3 (25 packages: arc through gitdeploy)
 
-- Hugo "extended" variant should be captured in `extra` column
+### New Classifier Patterns
+
+- `macosx` → darwin (syncthing uses `macosx`)
+- `ia32` → x86 (dart-sass uses `ia32`)
+- `.snap` format → Linux-only
+- `.appx` format added for PowerShell
+
+### New Meta-Asset Filters
+
+- `.pub` (cosign keys)
+- `install.sh`, `install.ps1` (install scripts)
+- `compat.json` (syncthing metadata)
+
+## Batch 4 (62 remaining packages) + Full Run
+
+### Hugo/Hugo-Extended Split
+
+hugo-extended shares the same GitHub repo as hugo. Added `asset_filter` and
+`asset_exclude` conf keys to split them:
+- `hugo/releases.conf`: `asset_exclude = extended` (6,354 assets)
+- `hugo-extended/releases.conf`: `asset_filter = extended` (2,193 assets)
+
+User direction: "hugo-extended should be a separate release. I believe the
+README covered this. I think it should have been the default."
+
+### Remaining Empty-Field Patterns (Per-Installer Territory)
+
+These have empty OS or arch from the generic classifier and need per-installer
+config to resolve:
+- Git-for-Windows: `Git-2.x.x-32-bit.tar.bz2` — no OS in filename, always Windows
+- CMake: HP-UX, IRIX targets — exotic/dead platforms
+- Dashcore: old naming conventions
+- Old PowerShell `.msi` files — no arch in filename
+- Bare binaries (ollama-darwin, caddy2_beta12_macos) — no arch info
+
+### Full Results
+
+169,867 distributable rows across 116 packages.
+3 packages produce 0 rows: serviceman, aliasman (source-only), duckdns.sh.
+
+### TODO
+
 - Consider whether bare binaries (no format extension) should get a format marker
-- Track `_extended` suffix detection more broadly
+- Per-installer configs for packages with known-but-undetectable OS/arch
+- `arm32` classification: leave to per-installer unless pattern emerges
 - `arm32` is vague — may mean armv6 or armv7. Leave as per-installer responsibility
   unless a distinct pattern emerges (user direction 2026-03-10)

@@ -50,8 +50,8 @@ func Filename(name string) Result {
 
 	format := detectFormat(lower)
 
-	// .deb and .rpm are Linux-only package formats.
-	if os == "" && (format == buildmeta.FormatDeb || format == buildmeta.FormatRPM) {
+	// .deb, .rpm, .snap are Linux-only package formats.
+	if os == "" && (format == buildmeta.FormatDeb || format == buildmeta.FormatRPM || format == buildmeta.FormatSnap) {
 		os = buildmeta.OSLinux
 	}
 	// .app.zip and .dmg are macOS-only formats.
@@ -78,7 +78,7 @@ var osPatterns = []struct {
 	os      buildmeta.OS
 	pattern *regexp.Regexp
 }{
-	{buildmeta.OSDarwin, regexp.MustCompile(`(?i)(?:` + b + `(?:darwin|macos|osx|os-x|apple)` + bEnd + `|` + b + `mac` + bEnd + `)`)},
+	{buildmeta.OSDarwin, regexp.MustCompile(`(?i)(?:` + b + `(?:darwin|macos|macosx|osx|os-x|apple)` + bEnd + `|` + b + `mac` + bEnd + `)`)},
 	{buildmeta.OSLinux, regexp.MustCompile(`(?i)` + b + `linux` + bEnd)},
 	{buildmeta.OSWindows, regexp.MustCompile(`(?i)` + b + `(?:windows|win(?:32|64|dows)?)` + bEnd + `|\.exe(?:\.xz)?$|\.msi$`)},
 	{buildmeta.OSFreeBSD, regexp.MustCompile(`(?i)` + b + `freebsd` + bEnd)},
@@ -131,7 +131,7 @@ var archPatterns = []struct {
 	{buildmeta.ArchMIPSLE, regexp.MustCompile(`(?i)mips(?:el|le)`)},
 	{buildmeta.ArchMIPS, regexp.MustCompile(`(?i)` + b + `mips` + bEnd)},
 	// x86 last — must not steal x86_64.
-	{buildmeta.ArchX86, regexp.MustCompile(`(?i)(?:` + b + `x86` + bEnd + `|i[3-6]86|` + b + `386` + bEnd + `|32-?bit)`)},
+	{buildmeta.ArchX86, regexp.MustCompile(`(?i)(?:` + b + `x86` + bEnd + `|i[3-6]86|ia32|` + b + `386` + bEnd + `|32-?bit)`)},
 }
 
 func detectArch(lower string) buildmeta.Arch {
@@ -189,6 +189,8 @@ var formatSuffixes = []struct {
 	{".dmg", buildmeta.FormatDMG},
 	{".deb", buildmeta.FormatDeb},
 	{".rpm", buildmeta.FormatRPM},
+	{".snap", buildmeta.FormatSnap},
+	{".appx", buildmeta.FormatAppx},
 	{".pkg", buildmeta.FormatPkg},
 }
 

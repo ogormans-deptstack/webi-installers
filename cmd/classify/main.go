@@ -237,6 +237,8 @@ type ghAsset struct {
 
 func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]Dist, error) {
 	tagPrefix := conf.Get("tag_prefix")
+	assetFilter := strings.ToLower(conf.Get("asset_filter"))   // asset must contain this
+	assetExclude := strings.ToLower(conf.Get("asset_exclude")) // asset must NOT contain this
 	releases, err := readAllReleases(d)
 	if err != nil {
 		return nil, err
@@ -269,9 +271,18 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]Di
 
 		for _, asset := range rel.Assets {
 			name := asset.Name
+			lower := strings.ToLower(name)
 
 			// Skip checksums, signatures, SBOMs, etc.
 			if isMetaAsset(name) {
+				continue
+			}
+
+			// Per-package asset filters.
+			if assetFilter != "" && !strings.Contains(lower, assetFilter) {
+				continue
+			}
+			if assetExclude != "" && strings.Contains(lower, assetExclude) {
 				continue
 			}
 
@@ -1206,8 +1217,9 @@ func isMetaAsset(name string) bool {
 		"checksums.txt", "sha256sums", "sha512sums",
 		".sbom", ".spdx", ".json.sig", ".sigstore",
 		"_src.tar.gz", "_src.tar.xz", "_src.zip",
-		".d.ts", // TypeScript definitions
-		".tgz",  // npm packages (not binary distributables)
+		".d.ts",  // TypeScript definitions
+		".tgz",   // npm packages (not binary distributables)
+		".pub",   // cosign/SSH public keys
 	} {
 		if strings.HasSuffix(lower, suffix) {
 			return true
@@ -1218,6 +1230,14 @@ func isMetaAsset(name string) bool {
 		"buildable-artifact",
 	} {
 		if strings.Contains(lower, contains) {
+			return true
+		}
+	}
+	// Exact name matches for known non-distributable files.
+	for _, exact := range []string{
+		"install.sh", "install.ps1", "compat.json",
+	} {
+		if lower == exact {
 			return true
 		}
 	}
