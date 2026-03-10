@@ -54,6 +54,10 @@ func Filename(name string) Result {
 	if os == "" && (format == buildmeta.FormatDeb || format == buildmeta.FormatRPM) {
 		os = buildmeta.OSLinux
 	}
+	// .app.zip and .dmg are macOS-only formats.
+	if os == "" && (format == buildmeta.FormatAppZip || format == buildmeta.FormatDMG) {
+		os = buildmeta.OSDarwin
+	}
 
 	return Result{
 		OS:     os,

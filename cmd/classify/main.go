@@ -1206,6 +1206,8 @@ func isMetaAsset(name string) bool {
 		"checksums.txt", "sha256sums", "sha512sums",
 		".sbom", ".spdx", ".json.sig", ".sigstore",
 		"_src.tar.gz", "_src.tar.xz", "_src.zip",
+		".d.ts", // TypeScript definitions
+		".tgz",  // npm packages (not binary distributables)
 	} {
 		if strings.HasSuffix(lower, suffix) {
 			return true
