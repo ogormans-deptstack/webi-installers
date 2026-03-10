@@ -58,6 +58,7 @@ func main() {
 	goDir := flag.String("go", "./_cache", "path to Go cache directory")
 	summary := flag.Bool("summary", false, "only print summary, not per-package details")
 	latest := flag.Bool("latest", false, "only compare latest version in each cache")
+	windowed := flag.Bool("windowed", false, "limit Go versions to the Node.js version range (2nd to 2nd-to-last)")
 	flag.Parse()
 	filterPkgs := flag.Args()
 
@@ -92,7 +93,7 @@ func main() {
 
 	var diffs []packageDiff
 	for _, pkg := range allPkgs {
-		d := compare(livePath, goPath, pkg, *latest)
+		d := compare(livePath, goPath, pkg, *latest, *windowed)
 		categorize(&d)
 		diffs = append(diffs, d)
 	}
@@ -185,7 +186,42 @@ func effectiveName(name, filename, download string) string {
 	return ""
 }
 
-func compare(livePath, goPath, pkg string, latestOnly bool) packageDiff {
+// versionWindow returns the 2nd and 2nd-to-last versions from a sorted
+// version list. This trims the edges where Node.js may have a newer fetch
+// or Go may have deeper history, focusing on the overlapping middle.
+func versionWindow(versions []string) (low, high string) {
+	if len(versions) <= 2 {
+		// Too few versions to window — use all.
+		if len(versions) > 0 {
+			return versions[0], versions[len(versions)-1]
+		}
+		return "", ""
+	}
+	// 2nd version (skip oldest) and 2nd-to-last (skip newest).
+	return versions[1], versions[len(versions)-2]
+}
+
+// filterVersionRange returns only the versions in sorted order that fall
+// within [low, high] inclusive (by lexver comparison).
+func filterVersionRange(vf map[string]map[string]bool, versions []string, low, high string) (map[string]bool, []string) {
+	lowV := lexver.Parse(low)
+	highV := lexver.Parse(high)
+
+	files := make(map[string]bool)
+	var kept []string
+	for _, v := range versions {
+		pv := lexver.Parse(v)
+		if lexver.Compare(pv, lowV) >= 0 && lexver.Compare(pv, highV) <= 0 {
+			kept = append(kept, v)
+			for f := range vf[v] {
+				files[f] = true
+			}
+		}
+	}
+	return files, kept
+}
+
+func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDiff {
 	live := loadCache(livePath, pkg)
 	goCache := loadCache(goPath, pkg)
 
@@ -202,11 +238,6 @@ func compare(livePath, goPath, pkg string, latestOnly bool) packageDiff {
 	}
 
 	// Collect filenames by version.
-	type versionFiles struct {
-		version string
-		files   map[string]bool
-	}
-
 	extractVersionFiles := func(ce *cacheEntry) (map[string]map[string]bool, []string) {
 		vf := make(map[string]map[string]bool)
 		for _, r := range ce.Releases {
@@ -227,37 +258,86 @@ func compare(livePath, goPath, pkg string, latestOnly bool) packageDiff {
 
 	var liveFiles, goFiles map[string]bool
 
+	// Parse live cache.
+	var liveVF map[string]map[string]bool
+	var liveVersions []string
 	if live != nil {
-		vf, versions := extractVersionFiles(live)
-		d.VersionsLive = versions
+		liveVF, liveVersions = extractVersionFiles(live)
+		d.VersionsLive = liveVersions
 		d.LiveCount = len(live.Releases)
+	}
 
-		if latestOnly && len(versions) > 0 {
-			liveFiles = vf[versions[len(versions)-1]]
-		} else {
+	// Parse Go cache.
+	var goVF map[string]map[string]bool
+	var goVersions []string
+	if goCache != nil {
+		goVF, goVersions = extractVersionFiles(goCache)
+		d.VersionsGo = goVersions
+		d.GoCount = len(goCache.Releases)
+	}
+
+	// Determine which files to compare based on mode.
+	if latestOnly {
+		// Compare only the latest version from each cache.
+		if live != nil && len(liveVersions) > 0 {
+			liveFiles = liveVF[liveVersions[len(liveVersions)-1]]
+		}
+		if goCache != nil && len(goVersions) > 0 {
+			goFiles = goVF[goVersions[len(goVersions)-1]]
+		}
+	} else if windowed && live != nil && len(liveVersions) > 0 {
+		// Use the Node.js version range (2nd to 2nd-to-last) to establish
+		// the window. Include ALL Node.js versions in the window (so missing
+		// Go versions are visible), but exclude Go-only versions (those are
+		// just deeper history, not real gaps).
+		low, high := versionWindow(liveVersions)
+		lowV := lexver.Parse(low)
+		highV := lexver.Parse(high)
+
+		// Collect all live files in the window.
+		liveFiles = make(map[string]bool)
+		liveInWindow := make(map[string]bool)
+		for _, v := range liveVersions {
+			pv := lexver.Parse(v)
+			if lexver.Compare(pv, lowV) >= 0 && lexver.Compare(pv, highV) <= 0 {
+				liveInWindow[v] = true
+				for f := range liveVF[v] {
+					liveFiles[f] = true
+				}
+			}
+		}
+
+		// For Go, only include versions that Node.js also has in the window.
+		// Go-only versions are hidden (deeper history, not gaps).
+		goFiles = make(map[string]bool)
+		for _, v := range goVersions {
+			if !liveInWindow[v] {
+				continue
+			}
+			for f := range goVF[v] {
+				goFiles[f] = true
+			}
+		}
+	} else {
+		// Compare all versions.
+		if live != nil {
 			liveFiles = make(map[string]bool)
 			for _, r := range live.Releases {
 				liveFiles[effectiveName(r.Name, r.Filename, r.Download)] = true
 			}
 		}
-	} else {
-		liveFiles = make(map[string]bool)
-	}
-
-	if goCache != nil {
-		vf, versions := extractVersionFiles(goCache)
-		d.VersionsGo = versions
-		d.GoCount = len(goCache.Releases)
-
-		if latestOnly && len(versions) > 0 {
-			goFiles = vf[versions[len(versions)-1]]
-		} else {
+		if goCache != nil {
 			goFiles = make(map[string]bool)
 			for _, r := range goCache.Releases {
 				goFiles[effectiveName(r.Name, r.Filename, r.Download)] = true
 			}
 		}
-	} else {
+	}
+
+	if liveFiles == nil {
+		liveFiles = make(map[string]bool)
+	}
+	if goFiles == nil {
 		goFiles = make(map[string]bool)
 	}
 
