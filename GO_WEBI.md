@@ -364,8 +364,9 @@ type Asset struct {
     Libc     string  // "musl"
     Format   string  // ".tar.gz"
     Channel  string  // "stable"
-    Extra    string  // "" (base) or "rocm", "jetpack5", "fxdependent"
-    Download string  // full URL
+    Extra    string    // extra version info for sorting
+    Variants []string  // ["rocm"], ["installer"], ["fxdependent"], etc.
+    Download string    // full URL
     ...
 }
 ```
@@ -378,10 +379,9 @@ hardware or runtime configuration beyond OS/arch/libc:
 - `fxdependent`, `fxdependentWinDesktop` — .NET framework-dependent (pwsh)
 - `profile` — debug profiling build (bun)
 - `source` — source archive, not a binary
-- `installer` — non-extractable installer format (.pkg, .msi, .deb, .rpm,
-  .dmg, .msixbundle, .AppImage, .exe-installer)
+- `installer` — `.exe` that is a GUI installer, not the actual tool binary
 
-The resolver **deprioritizes** assets with non-empty `Extra` — they're only
+The resolver **deprioritizes** assets with non-empty `Variants` — they're only
 selected when the user explicitly requests that variant (e.g., `?variant=rocm`).
 The full API still serves them for broader use cases.
 
@@ -392,20 +392,23 @@ selection naturally.
 
 ### Format Classification
 
-All assets are stored — nothing is dropped at classification time. Installer
-formats are tagged with `Extra = "installer"` so the resolver skips them by
-default while the full API can still serve them:
+All assets are stored — nothing is dropped at classification time.
 
-- `.pkg` (macOS installer)
-- `.msi` (Windows installer)
-- `.deb`, `.rpm` (Linux package managers)
-- `.dmg` (macOS disk image)
-- `.sh` (self-extracting installer scripts)
-- `.msixbundle`, `.AppImage`
-- `.exe` when it's an installer, not the actual binary
+Most formats are extractable and need no special tagging — the file extension
+is enough signal for the install scripts:
 
-Webi's default install path uses **extractable archives** (tar.gz, tar.xz, zip,
-7z) and **bare binaries** only.
+- `.tar.gz`, `.tar.xz`, `.tar.zst`, `.zip`, `.7z` — standard archives
+- `.pkg` — macOS: extractable via `pkgutil --expand-full` (flat files, no install)
+  See: https://coolaj86.com/articles/how-to-extract-pkg-files-and-payload/
+- `.deb` — extractable via `ar x` + `tar xf data.tar.*`
+- `.dmg` — mountable via `hdiutil attach`
+- `.msi` — extractable via `msiexec /a` or `lessmsi`
+- `.AppImage` — self-contained, chmod +x and run
+
+The one ambiguous format is `.exe` — it could be a bare binary (the actual tool)
+or a GUI installer (which can't be automated). Assets where `.exe` is an installer
+(not the tool itself) get `Variants: ["installer"]` so the resolver skips them
+by default.
 
 ### Legacy Export Filtering
 
@@ -464,8 +467,9 @@ behavior must be preserved for backward compatibility.
 
 - **Shell out to `node releases.js`?** No — all source types are implemented in
   Go. The Go pipeline fetches and classifies everything directly.
-- **Asset.Extra vs new Variant type?** `Extra` (string) serves the purpose.
-  The resolver already deprioritizes non-empty Extra. Keep it simple.
+- **Asset.Extra vs Variants?** `Extra` stays as version-related sort info.
+  New `Variants []string` field captures build qualifiers (rocm, installer,
+  fxdependent). Resolver deprioritizes assets with any variants.
 
 ## Current Node.js Architecture (Reference)
 

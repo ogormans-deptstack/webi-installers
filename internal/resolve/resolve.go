@@ -27,17 +27,19 @@ type Dist struct {
 	Size     int64
 	LTS      bool
 	Date     string
-	Extra    string
+	Extra    string   // extra version info for sorting
+	Variants []string // build qualifiers: "installer", "rocm", "fxdependent", etc.
 }
 
 // Query describes what the caller wants.
 type Query struct {
-	OS      buildmeta.OS
-	Arch    buildmeta.Arch
-	Libc    buildmeta.Libc
-	Formats []string // acceptable formats (e.g. ".tar.gz", ".zip"), in preference order
-	Channel string   // "stable" (default), "beta", etc.
-	Version string   // version prefix constraint ("24", "24.14", ""), empty = latest
+	OS       buildmeta.OS
+	Arch     buildmeta.Arch
+	Libc     buildmeta.Libc
+	Formats  []string // acceptable formats (e.g. ".tar.gz", ".zip"), in preference order
+	Channel  string   // "stable" (default), "beta", etc.
+	Version  string   // version prefix constraint ("24", "24.14", ""), empty = latest
+	Variants []string // if non-empty, only match assets with these variants
 }
 
 // Match is the resolved release.
@@ -134,7 +136,7 @@ func Best(dists []Dist, q Query) *Match {
 			ver:        ver,
 			archRank:   aRank,
 			formatRank: fRank,
-			hasExtra:   d.Extra != "",
+			hasVariants: len(d.Variants) > 0,
 		}
 
 		if best == nil || c.betterThan(best) {
@@ -219,7 +221,7 @@ type candidate struct {
 	ver        lexver.Version
 	archRank   int
 	formatRank int
-	hasExtra   bool // true if dist.Extra is non-empty (GPU variant, etc.)
+	hasVariants bool // true if dist has variant qualifiers (GPU, installer, etc.)
 }
 
 // betterThan returns true if c is a better match than other.
@@ -229,9 +231,9 @@ func (c *candidate) betterThan(other *candidate) bool {
 	if cmp != 0 {
 		return cmp > 0
 	}
-	// Prefer base variant over GPU/special variants (rocm, jetpack, etc.)
-	if c.hasExtra != other.hasExtra {
-		return !c.hasExtra
+	// Prefer base build over variant builds (rocm, installer, etc.)
+	if c.hasVariants != other.hasVariants {
+		return !c.hasVariants
 	}
 	if c.archRank != other.archRank {
 		return c.archRank < other.archRank

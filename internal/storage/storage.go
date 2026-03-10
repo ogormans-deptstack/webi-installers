@@ -29,7 +29,8 @@ type Asset struct {
 	Libc     string
 	Format   string
 	Download string
-	Extra    string
+	Extra    string   // extra version info for sorting (e.g. build metadata)
+	Variants []string // build qualifiers: "installer", "rocm", "jetpack5", "fxdependent", etc.
 }
 
 // PackageData is the full set of assets for a package, plus metadata.
