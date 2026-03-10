@@ -26,13 +26,14 @@ import (
 
 type cacheEntry struct {
 	Releases []struct {
-		Name     string `json:"name"`
-		Version  string `json:"version"`
-		Download string `json:"download"`
-		Channel  string `json:"channel"`
-		OS       string `json:"os"`
-		Arch     string `json:"arch"`
-		Ext      string `json:"ext"`
+		Name      string `json:"name"`
+		Filename  string `json:"_filename"` // Node.js uses _filename for some sources
+		Version   string `json:"version"`
+		Download  string `json:"download"`
+		Channel   string `json:"channel"`
+		OS        string `json:"os"`
+		Arch      string `json:"arch"`
+		Ext       string `json:"ext"`
 	} `json:"releases"`
 }
 
@@ -159,6 +160,28 @@ func loadCache(dir, pkg string) *cacheEntry {
 	return &entry
 }
 
+// effectiveName returns the best available filename for a release entry.
+// Node.js sometimes uses _filename (a path) instead of name.
+func effectiveName(name, filename, download string) string {
+	if name != "" {
+		return name
+	}
+	if filename != "" {
+		// _filename may be a path like "stable/macos/flutter_macos_3.41.4.zip"
+		if i := strings.LastIndex(filename, "/"); i >= 0 {
+			return filename[i+1:]
+		}
+		return filename
+	}
+	// Last resort: basename of download URL.
+	if download != "" {
+		if i := strings.LastIndex(download, "/"); i >= 0 {
+			return download[i+1:]
+		}
+	}
+	return ""
+}
+
 func compare(livePath, goPath, pkg string, latestOnly bool) packageDiff {
 	live := loadCache(livePath, pkg)
 	goCache := loadCache(goPath, pkg)
@@ -187,7 +210,7 @@ func compare(livePath, goPath, pkg string, latestOnly bool) packageDiff {
 			if vf[r.Version] == nil {
 				vf[r.Version] = make(map[string]bool)
 			}
-			vf[r.Version][r.Name] = true
+			vf[r.Version][effectiveName(r.Name, r.Filename, r.Download)] = true
 		}
 		var versions []string
 		for v := range vf {
@@ -209,7 +232,7 @@ func compare(livePath, goPath, pkg string, latestOnly bool) packageDiff {
 		} else {
 			liveFiles = make(map[string]bool)
 			for _, r := range live.Releases {
-				liveFiles[r.Name] = true
+				liveFiles[effectiveName(r.Name, r.Filename, r.Download)] = true
 			}
 		}
 	} else {
@@ -226,7 +249,7 @@ func compare(livePath, goPath, pkg string, latestOnly bool) packageDiff {
 		} else {
 			goFiles = make(map[string]bool)
 			for _, r := range goCache.Releases {
-				goFiles[r.Name] = true
+				goFiles[effectiveName(r.Name, r.Filename, r.Download)] = true
 			}
 		}
 	} else {
