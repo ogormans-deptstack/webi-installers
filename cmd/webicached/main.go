@@ -558,8 +558,15 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 
 			r := classify.Filename(a.Name)
 
+			// Normalize .tgz → .tar.gz in the display filename.
+			// The download URL still points to the real file.
+			name := a.Name
+			if strings.HasSuffix(strings.ToLower(name), ".tgz") {
+				name = name[:len(name)-4] + ".tar.gz"
+			}
+
 			assets = append(assets, storage.Asset{
-				Filename: a.Name,
+				Filename: name,
 				Version:  version,
 				Channel:  channel,
 				OS:       string(r.OS),
