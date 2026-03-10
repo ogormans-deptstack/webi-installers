@@ -20,8 +20,9 @@ func TagVariants(assets []storage.Asset) {
 			}
 		}
 		// Ollama-darwin.zip (capital O) is the macOS .app bundle.
+		// Installable by Go (extract .app), but not in legacy cache.
 		if strings.HasPrefix(assets[i].Filename, "Ollama-") {
-			assets[i].Variants = append(assets[i].Variants, "installer")
+			assets[i].Variants = append(assets[i].Variants, "app")
 		}
 	}
 }

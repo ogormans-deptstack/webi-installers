@@ -159,11 +159,12 @@ Status: `[x]` reviewed, `[-]` known acceptable, `[ ]` needs work
 - [-] hugo-extended — 14 extras: non-extended assets leaking in; keep as-is for now
 - [x] kubectx — asset_filter splits shared release
 - [x] kubens — asset_filter splits shared release
-- [x] node — nodedist "exe" format code doesn't map to a real file; skipped
-- [x] ollama — Ollama-darwin.zip tagged as installer; .tgz filename
-      differs from live's .tar.gz but maps to same format
+- [x] node — .exe bare binary stored with "bare-exe" variant (Go can serve,
+      legacy excludes); .msi tagged as installer
+- [x] ollama — Ollama-darwin.zip tagged as "app" variant (Go can install,
+      legacy excludes); .tgz normalized to .tar.gz in filename
 - [-] uuidv7 — exotic arches correctly classified; resolver filters by request
-- [x] yq — man_page_only now caught by isMetaAsset
+- [x] yq — man_page_only tagged as "man-pages" variant in yq-specific tagger
 - [x] ffmpeg — asset_filter=ffmpeg excludes ffprobe/ffplay; .LICENSE/.README
       now caught by isMetaAsset
 

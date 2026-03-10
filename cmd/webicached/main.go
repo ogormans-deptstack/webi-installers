@@ -51,6 +51,7 @@ import (
 	"github.com/webinstall/webi-installers/internal/releases/ollama"
 	"github.com/webinstall/webi-installers/internal/releases/pwsh"
 	"github.com/webinstall/webi-installers/internal/releases/xcaddy"
+	"github.com/webinstall/webi-installers/internal/releases/yq"
 	"github.com/webinstall/webi-installers/internal/releases/zigdist"
 	"github.com/webinstall/webi-installers/internal/storage"
 	"github.com/webinstall/webi-installers/internal/storage/fsstore"
@@ -724,9 +725,7 @@ func expandNodeFile(pkg, version, channel, date string, lts bool, baseURL, file 
 	case "msi":
 		formats = []string{".msi"}
 	case "exe":
-		// Node.js "exe" index entry doesn't correspond to a real download.
-		// The MSI installer is the actual Windows installer; skip exe.
-		return nil
+		formats = []string{".exe"}
 	case "7z":
 		formats = []string{".7z"}
 	case "":
@@ -1462,7 +1461,7 @@ func isMetaAsset(name string) bool {
 	for _, contains := range []string{
 		"checksums", "sha256sum", "sha512sum",
 		"buildable-artifact",
-		"man_page_only", ".LICENSE", ".README",
+		".LICENSE", ".README",
 	} {
 		if strings.Contains(lower, contains) {
 			return true
@@ -1498,6 +1497,8 @@ func tagVariants(pkg string, _ *installerconf.Conf, assets []storage.Asset) {
 		pwsh.TagVariants(assets)
 	case "xcaddy":
 		xcaddy.TagVariants(assets)
+	case "yq":
+		yq.TagVariants(assets)
 	}
 }
 
