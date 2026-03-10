@@ -283,7 +283,7 @@ func fetchPackage(ctx context.Context, client *http.Client, cacheRoot, confDir, 
 		return fmt.Errorf("read conf: %w", err)
 	}
 
-	source := conf.Source()
+	source := conf.Source
 	log.Printf("  %s: source=%s", pkg, source)
 
 	switch source {
@@ -297,9 +297,9 @@ func fetchPackage(ctx context.Context, client *http.Client, cacheRoot, confDir, 
 }
 
 func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkg string, conf *installerconf.Conf, auth *githubish.Auth) error {
-	owner := conf.Get("owner")
-	repo := conf.Get("repo")
-	tagPrefix := conf.Get("tag_prefix")
+	owner := conf.Owner
+	repo := conf.Repo
+	tagPrefix := conf.TagPrefix
 
 	d, err := rawcache.Open(filepath.Join(cacheRoot, pkg))
 	if err != nil {
@@ -361,7 +361,7 @@ func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkg string
 }
 
 func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkg string, conf *installerconf.Conf) error {
-	baseURL := conf.Get("url")
+	baseURL := conf.BaseURL
 	d, err := rawcache.Open(filepath.Join(cacheRoot, pkg))
 	if err != nil {
 		return err
@@ -412,7 +412,7 @@ func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkg stri
 
 // classifyFromCache reads the raw cache and produces classified dists.
 func classifyFromCache(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]resolve.Dist, error) {
-	source := conf.Source()
+	source := conf.Source
 	switch source {
 	case "github":
 		return classifyGitHub(pkg, conf, d)
@@ -424,7 +424,7 @@ func classifyFromCache(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([
 }
 
 func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]resolve.Dist, error) {
-	tagPrefix := conf.Get("tag_prefix")
+	tagPrefix := conf.TagPrefix
 	releases, err := readAllReleases(d)
 	if err != nil {
 		return nil, err
@@ -494,7 +494,7 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]re
 }
 
 func classifyNodeDist(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]resolve.Dist, error) {
-	baseURL := conf.Get("url")
+	baseURL := conf.BaseURL
 	releases, err := readAllReleases(d)
 	if err != nil {
 		return nil, err

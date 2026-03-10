@@ -84,14 +84,14 @@ func main() {
 
 	for _, pkg := range packages {
 		// Aliases share cache with their target — skip fetching.
-		if alias := pkg.conf.Get("alias_of"); alias != "" {
+		if alias := pkg.conf.Extra["alias_of"]; alias != "" {
 			log.Printf("  %s: alias of %s, skipping", pkg.name, alias)
 			continue
 		}
 
 		log.Printf("fetching %s...", pkg.name)
 		var err error
-		switch pkg.conf.Source() {
+		switch pkg.conf.Source {
 		case "github":
 			err = fetchGitHub(ctx, client, *cacheDir, pkg.name, pkg.conf, auth)
 		case "nodedist":
@@ -119,7 +119,7 @@ func main() {
 		case "mariadbdist":
 			err = fetchMariaDB(ctx, client, *cacheDir, pkg.name)
 		default:
-			log.Printf("  %s: unknown source %q, skipping", pkg.name, pkg.conf.Source())
+			log.Printf("  %s: unknown source %q, skipping", pkg.name, pkg.conf.Source)
 			continue
 		}
 		if err != nil {
@@ -164,7 +164,7 @@ func discover(dir string) ([]pkgConf, error) {
 }
 
 func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkgName string, conf *installerconf.Conf) error {
-	baseURL := conf.Get("url")
+	baseURL := conf.BaseURL
 	if baseURL == "" {
 		return fmt.Errorf("missing url in releases.conf")
 	}
@@ -215,9 +215,9 @@ func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkgName 
 }
 
 func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkgName string, conf *installerconf.Conf, auth *githubish.Auth) error {
-	owner := conf.Get("owner")
-	repo := conf.Get("repo")
-	tagPrefix := conf.Get("tag_prefix")
+	owner := conf.Owner
+	repo := conf.Repo
+	tagPrefix := conf.TagPrefix
 
 	if owner == "" || repo == "" {
 		return fmt.Errorf("missing owner or repo in releases.conf")
@@ -484,7 +484,7 @@ func fetchITerm2(ctx context.Context, client *http.Client, cacheRoot, pkgName st
 }
 
 func fetchHashiCorp(ctx context.Context, client *http.Client, cacheRoot, pkgName string, conf *installerconf.Conf) error {
-	product := conf.Get("product")
+	product := conf.Extra["product"]
 	if product == "" {
 		return fmt.Errorf("missing product in releases.conf")
 	}
@@ -586,7 +586,7 @@ func fetchJulia(ctx context.Context, client *http.Client, cacheRoot, pkgName str
 }
 
 func fetchGitTag(ctx context.Context, cacheRoot, pkgName string, conf *installerconf.Conf) error {
-	gitURL := conf.Get("url")
+	gitURL := conf.BaseURL
 	if gitURL == "" {
 		return fmt.Errorf("missing url in releases.conf")
 	}
@@ -647,9 +647,9 @@ func fetchGitTag(ctx context.Context, cacheRoot, pkgName string, conf *installer
 }
 
 func fetchGitea(ctx context.Context, client *http.Client, cacheRoot, pkgName string, conf *installerconf.Conf) error {
-	baseURL := conf.Get("base_url")
-	owner := conf.Get("owner")
-	repo := conf.Get("repo")
+	baseURL := conf.BaseURL
+	owner := conf.Owner
+	repo := conf.Repo
 
 	if baseURL == "" || owner == "" || repo == "" {
 		return fmt.Errorf("missing base_url, owner, or repo in releases.conf")

@@ -76,11 +76,11 @@ func main() {
 		}
 
 		// Skip aliases.
-		if alias := conf.Get("alias_of"); alias != "" {
+		if alias := conf.Extra["alias_of"]; alias != "" {
 			continue
 		}
 
-		source := conf.Source()
+		source := conf.Source
 		d, err := rawcache.Open(filepath.Join(*cacheDir, pkg))
 		if err != nil {
 			log.Printf("  %s: skip (no cache: %v)", pkg, err)
@@ -238,9 +238,9 @@ type ghAsset struct {
 }
 
 func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]Dist, error) {
-	tagPrefix := conf.Get("tag_prefix")
-	assetFilter := strings.ToLower(conf.Get("asset_filter"))   // asset must contain this
-	assetExclude := strings.ToLower(conf.Get("asset_exclude")) // asset must NOT contain this
+	tagPrefix := conf.TagPrefix
+	assetFilter := strings.ToLower(conf.Extra["asset_filter"])   // asset must contain this
+	assetExclude := strings.ToLower(conf.Extra["asset_exclude"]) // asset must NOT contain this
 	releases, err := readAllReleases(d)
 	if err != nil {
 		return nil, err
@@ -440,7 +440,7 @@ type nodeEntry struct {
 }
 
 func classifyNodeDist(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]Dist, error) {
-	baseURL := conf.Get("url")
+	baseURL := conf.BaseURL
 	releases, err := readAllReleases(d)
 	if err != nil {
 		return nil, err
