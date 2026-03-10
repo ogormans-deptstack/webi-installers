@@ -1249,7 +1249,6 @@ func isMetaAsset(name string) bool {
 		".sbom", ".spdx", ".json.sig", ".sigstore",
 		"_src.tar.gz", "_src.tar.xz", "_src.zip",
 		".d.ts",  // TypeScript definitions
-		".tgz",   // npm packages (not binary distributables)
 		".pub",   // cosign/SSH public keys
 	} {
 		if strings.HasSuffix(lower, suffix) {
@@ -1284,6 +1283,10 @@ func detectFormat(name string) string {
 		if strings.HasSuffix(lower, ext) {
 			return ext
 		}
+	}
+	// .tgz is a common alias for .tar.gz (used by ollama, npm, etc.)
+	if strings.HasSuffix(lower, ".tgz") {
+		return ".tar.gz"
 	}
 	ext := filepath.Ext(lower)
 	return ext // includes leading dot, or "" if none
