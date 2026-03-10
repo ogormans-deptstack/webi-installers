@@ -163,9 +163,9 @@ var knownPackages = []struct {
 	{"fzf", "0.", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64", "linux-armv7", "windows-amd64"}},
 	{"gh", "2.", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64", "linux-armv6", "windows-amd64"}},
 	{"rg", "", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64", "windows-amd64"}},
-	{"shellcheck", "0.", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64", "linux-armv6"}},
+	{"shellcheck", "0.", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64", "linux-armv6", "windows-amd64"}},
 	{"shfmt", "3.", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64", "linux-armv6", "windows-amd64"}},
-	{"xz", "", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "windows-amd64"}},
+	{"xz", "", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64", "windows-amd64"}},
 	{"yq", "4.", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64", "linux-armv6", "windows-amd64"}},
 	{"zoxide", "0.", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64", "linux-armv7", "windows-amd64"}},
 	{"aliasman", "", []string{"darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64"}},
@@ -205,7 +205,8 @@ func TestKnownPackages(t *testing.T) {
 						Formats: plat.formats,
 					})
 					if m == nil {
-						t.Fatalf("MUST resolve for %s on %s", kp.pkg, platName)
+						t.Errorf("no build available for %s on %s — upstream gap", kp.pkg, platName)
+						return
 					}
 					if kp.version != "" {
 						// Strip leading "v" for prefix comparison.
