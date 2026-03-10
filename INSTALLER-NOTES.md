@@ -343,3 +343,63 @@ Binary in archive doesn't match expected binary name.
 6. **Man page location varies**: `tool.1`, `doc/tool.1`, `manpages/tool.1.gz`, `man/man1/tool.1`
 7. **pathman and yq**: need binary rename during install
 8. **crabz**: classified archive is source code, not binary — classifier bug or mismatch
+
+---
+
+## Format Changes Over Time
+
+Analyzed all packages for format/OS changes year by year. Most changes are just
+adding/removing OS support (e.g. adding linux:.deb). Below are the structurally
+significant changes that affect install scripts.
+
+### Packages with Structural Format Changes
+
+| Package | When | What Changed |
+|---------|------|-------------|
+| sd | 2023 | zip → tar.gz, added completions + man page |
+| ollama | 2025–2026 | bare binary → no GitHub release → tar.zst with lib/ |
+| caddy | 2019–2020 | v1 (zip) → v2 (tar.gz, different naming) |
+| deno | 2020–2021 | .gz (gzipped binary) → .zip |
+| fzf | 2021–2025 | darwin: tar.gz → zip → tar.gz |
+| gh | 2024 | darwin: tar.gz → .pkg |
+| hugo | 2017–2018 | zip → tar.gz (naming also changed) |
+| bun | 2022 | restructured archive formats |
+| sclient | 2023 | tar.gz → tar.xz |
+| watchexec | 2019–2020 | tar.gz → tar.xz |
+| pathman | 2023 | tar.gz + zip → tar.gz + tar.xz (dropped windows zip) |
+
+### Packages with Stable Formats (no structural change)
+
+These packages have maintained the same archive structure since their first release.
+Only the binary name or OS/arch list changed — install script stays the same.
+
+awless, bat, chromedriver, cilium, cmake, curlie, dashmsg, delta, dotenv,
+dotenv-linter, fd, ffuf, gitdeploy, goreleaser, gprox, grype, hexyl,
+k9s, keypairs, koji, kubectx, kubens, lf, lsd, monorel, node, ots,
+rclone, rg/ripgrep, runzip, sass, shellcheck, sqlc, sqlpkg, sttr,
+syncthing, terraform, trip, uuidv7, xcaddy, xsv, xz, yq, zig, zoxide
+
+### Per-Package Format Change Notes
+
+**sd**: v0.6.5 and earlier used zip with bare binary in triplet directory.
+v1.0.0+ uses tar.gz with binary + completions + man page. Install script
+needs two eras.
+
+**ollama**: Three distinct eras on Linux:
+1. v0.1.0–v0.3.6: bare binary (self-contained, 300-400MB)
+2. v0.4.0–v0.13.x: no GitHub release (use official install script)
+3. v0.14.0+: tar.zst with `bin/ollama` + `lib/ollama/` (1.7GB)
+Darwin always has .zip with Ollama.app; bare CLI binary dropped at v0.5.8.
+
+**caddy**: v1 used simple `caddy_{os}_{arch}.tar.gz`. v2 (2020+) uses
+`caddy_{ver}_{os}_{arch}.tar.gz` with same flat structure. Internal layout
+didn't actually change — just the naming convention.
+
+**deno**: Switched from `deno-{triplet}.gz` (gzipped bare binary) to
+`deno-{triplet}.zip` in 2020-2021. Both contain just the binary.
+
+**gh**: Darwin switched from tar.gz to .pkg in 2024. Linux tar.gz structure
+(FHS-like with bin/ and share/man/) stayed the same.
+
+**hugo**: Early releases (2014) were bare binaries. Switched to zip (2014-2017),
+then tar.gz (2017+). Internal structure always been flat (hugo, LICENSE, README).
