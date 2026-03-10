@@ -8,106 +8,128 @@ import (
 	"github.com/webinstall/webi-installers/internal/installerconf"
 )
 
-func TestRead(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "releases.conf")
-	os.WriteFile(path, []byte(`
-# Hugo release config
+func TestSimpleGitHub(t *testing.T) {
+	c := confFromString(t, `
+source = github
+owner = sharkdp
+repo = bat
+`)
+	assertEqual(t, "Source", c.Source, "github")
+	assertEqual(t, "Owner", c.Owner, "sharkdp")
+	assertEqual(t, "Repo", c.Repo, "bat")
+	assertEqual(t, "TagPrefix", c.TagPrefix, "")
+	assertEqual(t, "VersionPrefix", c.VersionPrefix, "")
+
+	if len(c.Exclude) != 0 {
+		t.Errorf("Exclude = %v, want empty", c.Exclude)
+	}
+}
+
+func TestVersionPrefix(t *testing.T) {
+	c := confFromString(t, `
+source = github
+owner = jqlang
+repo = jq
+version_prefix = jq-
+`)
+	assertEqual(t, "VersionPrefix", c.VersionPrefix, "jq-")
+}
+
+func TestExclude(t *testing.T) {
+	c := confFromString(t, `
 source = github
 owner = gohugoio
 repo = hugo
-`), 0o644)
-
-	c, err := installerconf.Read(path)
-	if err != nil {
-		t.Fatal(err)
+exclude = _extended_, Linux-64bit
+`)
+	if len(c.Exclude) != 2 {
+		t.Fatalf("Exclude has %d items, want 2: %v", len(c.Exclude), c.Exclude)
 	}
-
-	if c.Source() != "github" {
-		t.Errorf("Source() = %q, want github", c.Source())
-	}
-	if c.Get("owner") != "gohugoio" {
-		t.Errorf("owner = %q, want gohugoio", c.Get("owner"))
-	}
-	if c.Get("repo") != "hugo" {
-		t.Errorf("repo = %q, want hugo", c.Get("repo"))
-	}
+	assertEqual(t, "Exclude[0]", c.Exclude[0], "_extended_")
+	assertEqual(t, "Exclude[1]", c.Exclude[1], "Linux-64bit")
 }
 
-func TestReadMonorepo(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "releases.conf")
-	os.WriteFile(path, []byte(`source = github
+func TestMonorepoTagPrefix(t *testing.T) {
+	c := confFromString(t, `
+source = github
 owner = therootcompany
 repo = golib
 tag_prefix = tools/monorel/
-`), 0o644)
-
-	c, err := installerconf.Read(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if c.Get("tag_prefix") != "tools/monorel/" {
-		t.Errorf("tag_prefix = %q", c.Get("tag_prefix"))
-	}
+`)
+	assertEqual(t, "TagPrefix", c.TagPrefix, "tools/monorel/")
 }
 
-func TestReadNodeDist(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "releases.conf")
-	os.WriteFile(path, []byte(`source = nodedist
+func TestNodeDist(t *testing.T) {
+	c := confFromString(t, `
+source = nodedist
 url = https://nodejs.org/download/release
-`), 0o644)
-
-	c, err := installerconf.Read(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if c.Source() != "nodedist" {
-		t.Errorf("Source() = %q, want nodedist", c.Source())
-	}
-	if c.Get("url") != "https://nodejs.org/download/release" {
-		t.Errorf("url = %q", c.Get("url"))
-	}
+`)
+	assertEqual(t, "Source", c.Source, "nodedist")
+	assertEqual(t, "BaseURL", c.BaseURL, "https://nodejs.org/download/release")
 }
 
-func TestReadSkipsBlanksAndComments(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "releases.conf")
-	os.WriteFile(path, []byte(`
-# comment
+func TestGiteaBaseURL(t *testing.T) {
+	c := confFromString(t, `
+source = gitea
+base_url = https://gitea.com
+owner = xorm
+repo = xorm
+`)
+	assertEqual(t, "Source", c.Source, "gitea")
+	assertEqual(t, "BaseURL", c.BaseURL, "https://gitea.com")
+	assertEqual(t, "Owner", c.Owner, "xorm")
+}
+
+func TestBlanksAndComments(t *testing.T) {
+	c := confFromString(t, `
+# Hugo config
 source = github
 
-# another comment
+# owner line
 owner = foo
-`), 0o644)
+`)
+	assertEqual(t, "Source", c.Source, "github")
+	assertEqual(t, "Owner", c.Owner, "foo")
+}
 
-	c, err := installerconf.Read(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if c.Source() != "github" {
-		t.Errorf("Source() = %q", c.Source())
-	}
-	if c.Get("owner") != "foo" {
-		t.Errorf("owner = %q", c.Get("owner"))
+func TestExtraKeys(t *testing.T) {
+	c := confFromString(t, `
+source = github
+owner = foo
+repo = bar
+custom_thing = hello
+`)
+	if c.Extra == nil || c.Extra["custom_thing"] != "hello" {
+		t.Errorf("Extra[custom_thing] = %q, want hello", c.Extra["custom_thing"])
 	}
 }
 
-func TestGetMissing(t *testing.T) {
+func TestEmptyExclude(t *testing.T) {
+	c := confFromString(t, "source = github\n")
+	if c.Exclude != nil {
+		t.Errorf("Exclude = %v, want nil", c.Exclude)
+	}
+}
+
+// helpers
+
+func confFromString(t *testing.T, content string) *installerconf.Conf {
+	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "releases.conf")
-	os.WriteFile(path, []byte("source = github\n"), 0o644)
-
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	c, err := installerconf.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return c
+}
 
-	if c.Get("nonexistent") != "" {
-		t.Errorf("Get(nonexistent) = %q, want empty", c.Get("nonexistent"))
+func assertEqual(t *testing.T, name, got, want string) {
+	t.Helper()
+	if got != want {
+		t.Errorf("%s = %q, want %q", name, got, want)
 	}
 }
