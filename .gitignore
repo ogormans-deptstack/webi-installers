@@ -31,3 +31,4 @@ node_modules/
 .DS_Store
 desktop.ini
 .directory
+LIVE_cache
