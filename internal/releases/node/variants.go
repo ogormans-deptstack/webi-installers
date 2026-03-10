@@ -4,13 +4,13 @@ import "github.com/webinstall/webi-installers/internal/storage"
 
 // TagVariants tags node-specific build variants.
 //
-// .msi is a Windows installer. .exe is the bare node.exe binary — valid
-// and installable by Go, but not present in the legacy Node.js cache
-// (the nodedist classifier doesn't construct that filename).
+//   - .msi — Windows installer
+//   - .pkg — macOS installer (pkgutil --expand-full)
+//   - .exe — bare node.exe without npm, too minimal to be useful
 func TagVariants(assets []storage.Asset) {
 	for i := range assets {
 		switch assets[i].Format {
-		case ".msi":
+		case ".msi", ".pkg":
 			assets[i].Variants = append(assets[i].Variants, "installer")
 		case ".exe":
 			assets[i].Variants = append(assets[i].Variants, "bare-exe")
