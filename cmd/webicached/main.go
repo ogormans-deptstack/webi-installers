@@ -506,28 +506,42 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 
 		// Source archives for packages with no binary assets.
 		// These are installable on any POSIX system (shell scripts, etc.).
+		//
+		// GitHub's tarball/zipball URLs (api.github.com/repos/.../tarball/TAG)
+		// redirect to codeload.github.com which serves the archive with a
+		// Content-Disposition filename like: Owner-Repo-ShortHash.tar.gz
+		// The extracted directory uses the same name, which install scripts
+		// depend on for globbing (e.g. mv ./*aliasman*/ ...).
+		//
+		// We construct the codeload URL directly (deterministic) and use
+		// Owner-Repo-Tag as the filename. The actual extracted directory
+		// will be Owner-Repo-ShortHash but the download URL resolves the same.
 		if len(rel.Assets) == 0 {
+			owner, repo := conf.Owner, conf.Repo
+			tag := rel.TagName
 			if rel.TarballURL != "" {
+				dlURL := fmt.Sprintf("https://codeload.github.com/%s/%s/legacy.tar.gz/refs/tags/%s", owner, repo, tag)
 				assets = append(assets, storage.Asset{
-					Filename: rel.TagName + ".tar.gz",
+					Filename: owner + "-" + repo + "-" + tag + ".tar.gz",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
 					Arch:     "*",
 					Format:   ".tar.gz",
-					Download: rel.TarballURL,
+					Download: dlURL,
 					Date:     date,
 				})
 			}
 			if rel.ZipballURL != "" {
+				dlURL := fmt.Sprintf("https://codeload.github.com/%s/%s/legacy.zip/refs/tags/%s", owner, repo, tag)
 				assets = append(assets, storage.Asset{
-					Filename: rel.TagName + ".zip",
+					Filename: owner + "-" + repo + "-" + tag + ".zip",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
 					Arch:     "*",
 					Format:   ".zip",
-					Download: rel.ZipballURL,
+					Download: dlURL,
 					Date:     date,
 				})
 			}
