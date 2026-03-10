@@ -1465,6 +1465,7 @@ func isMetaAsset(name string) bool {
 		}
 	}
 	for _, contains := range []string{
+		"checksums", "sha256sum", "sha512sum",
 		"buildable-artifact",
 		".LICENSE", ".README",
 	} {
