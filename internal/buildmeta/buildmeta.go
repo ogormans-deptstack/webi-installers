@@ -43,6 +43,10 @@ const (
 	ArchS390X   Arch = "s390x"
 	ArchMIPS64  Arch = "mips64"
 	ArchMIPS    Arch = "mips"
+
+	// Universal (fat) binary architectures for macOS.
+	ArchUniversal1 Arch = "universal1" // PPC + x86 (Rosetta 1 era)
+	ArchUniversal2 Arch = "universal2" // x86_64 + ARM64 (Rosetta 2 era)
 )
 
 // Libc represents the C library a binary is linked against.
@@ -100,5 +104,44 @@ type Target struct {
 // Triplet returns the canonical "os-arch-libc" string.
 func (t Target) Triplet() string {
 	return string(t.OS) + "-" + string(t.Arch) + "-" + string(t.Libc)
+}
+
+// CompatArches returns the architectures that the given OS+arch
+// combination can execute, ordered from most specific to least.
+// The input arch is always first.
+//
+// These are OS-level facts (hardware + translation layer), not
+// package-specific. Per-package overrides belong in installer config.
+func CompatArches(os OS, arch Arch) []Arch {
+	switch os {
+	case OSDarwin:
+		switch arch {
+		case ArchARM64:
+			// Rosetta 2: Apple Silicon runs x86_64 binaries.
+			return []Arch{ArchARM64, ArchUniversal2, ArchAMD64}
+		case ArchAMD64:
+			return []Arch{ArchAMD64, ArchUniversal2, ArchX86}
+		}
+	case OSWindows:
+		switch arch {
+		case ArchARM64:
+			// Windows on ARM emulates x86_64 and x86.
+			return []Arch{ArchARM64, ArchAMD64, ArchX86}
+		}
+	}
+
+	// Micro-architecture fallbacks (universal across all OSes).
+	switch arch {
+	case ArchAMD64v4:
+		return []Arch{ArchAMD64v4, ArchAMD64v3, ArchAMD64v2, ArchAMD64}
+	case ArchAMD64v3:
+		return []Arch{ArchAMD64v3, ArchAMD64v2, ArchAMD64}
+	case ArchAMD64v2:
+		return []Arch{ArchAMD64v2, ArchAMD64}
+	case ArchARMv7:
+		return []Arch{ArchARMv7, ArchARMv6}
+	}
+
+	return []Arch{arch}
 }
 
