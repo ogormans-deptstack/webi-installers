@@ -93,16 +93,16 @@ func Best(dists []Dist, q Query) *Match {
 			continue
 		}
 
-		// OS filter.
-		if d.OS != string(q.OS) {
+		// OS filter: exact match, POSIX fallback, or ANYOS.
+		if !osMatches(q.OS, d.OS) {
 			continue
 		}
 
 		// Arch filter (including compat arches).
-		// Empty arch in the dist means "universal/platform-agnostic" — accept it
-		// but rank it lower than an exact match.
+		// Empty arch or ANYARCH means "universal/platform-agnostic" —
+		// accept it but rank it lower than an exact match.
 		aRank, archOK := archRank[d.Arch]
-		if !archOK && d.Arch == "" {
+		if !archOK && (d.Arch == "" || d.Arch == string(buildmeta.ArchAny)) {
 			// Universal binary — rank after all specific arches.
 			aRank = len(compatArches)
 			archOK = true
@@ -239,6 +239,25 @@ func (c *candidate) betterThan(other *candidate) bool {
 		return c.archRank < other.archRank
 	}
 	return c.formatRank < other.formatRank
+}
+
+// osMatches checks whether a dist's OS is acceptable for the query.
+// Matches exact OS, ANYOS (universal), and POSIX compatibility levels
+// (posix_2017 matches any non-Windows OS).
+func osMatches(want buildmeta.OS, have string) bool {
+	if have == string(want) {
+		return true
+	}
+	if have == string(buildmeta.OSAny) {
+		return true
+	}
+	// POSIX assets run on any non-Windows system.
+	if want != buildmeta.OSWindows {
+		if have == string(buildmeta.OSPosix2017) || have == string(buildmeta.OSPosix2024) {
+			return true
+		}
+	}
+	return false
 }
 
 // libcMatches checks whether a dist's libc is acceptable for the query.
