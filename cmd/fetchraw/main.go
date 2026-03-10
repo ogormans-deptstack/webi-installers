@@ -1,10 +1,11 @@
 // Command fetchraw fetches complete release histories from upstream APIs
-// and stores them in rawcache. This is a development/bootstrap tool for
-// populating the cache with permanent history.
+// and merges them into rawcache. Safe to run repeatedly — existing releases
+// are skipped, new ones are added, _latest is updated.
 //
 // Usage:
 //
 //	go run ./cmd/fetchraw -cache ./_cache/raw
+//	go run ./cmd/fetchraw -cache ./_cache/raw hugo caddy
 package main
 
 import (
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/webinstall/webi-installers/internal/lexver"
 	"github.com/webinstall/webi-installers/internal/rawcache"
 	"github.com/webinstall/webi-installers/internal/releases/github"
 	"github.com/webinstall/webi-installers/internal/releases/githubish"
@@ -62,7 +64,6 @@ func main() {
 
 	args := flag.Args()
 	if len(args) > 0 {
-		// Filter to only requested packages.
 		nameSet := make(map[string]bool, len(args))
 		for _, a := range args {
 			nameSet[a] = true
@@ -95,48 +96,41 @@ func fetchNodeDist(ctx context.Context, client *http.Client, cacheRoot, pkgName,
 		return err
 	}
 
-	r, err := d.BeginRefresh()
-	if err != nil {
-		return err
-	}
-
-	var count int
+	var added, skipped int
 	var latest string
 	for batch, err := range nodedist.Fetch(ctx, client, baseURL) {
 		if err != nil {
-			r.Abort()
 			return fmt.Errorf("%s fetch: %w", pkgName, err)
 		}
 		for _, entry := range batch {
 			tag := entry.Version
+
+			if d.Has(tag) {
+				skipped++
+				continue
+			}
+
 			data, err := json.Marshal(entry)
 			if err != nil {
-				r.Abort()
 				return fmt.Errorf("%s marshal %s: %w", pkgName, tag, err)
 			}
-			if err := r.Put(tag, data); err != nil {
-				r.Abort()
+			if err := d.Put(tag, data); err != nil {
 				return err
 			}
-			count++
+			added++
+
+			// Node dist returns newest first.
 			if latest == "" {
 				latest = tag
 			}
 		}
 	}
 
-	if latest != "" {
-		if err := r.SetLatest(latest); err != nil {
-			r.Abort()
-			return err
-		}
-	}
-
-	if err := r.Commit(); err != nil {
+	if err := updateLatest(d, latest); err != nil {
 		return err
 	}
 
-	log.Printf("  %s: %d releases, latest=%s", pkgName, count, latest)
+	log.Printf("  %s: %d added, %d skipped, latest=%s", pkgName, added, skipped, d.Latest())
 	return nil
 }
 
@@ -146,16 +140,10 @@ func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkgName, o
 		return err
 	}
 
-	r, err := d.BeginRefresh()
-	if err != nil {
-		return err
-	}
-
-	var count int
+	var added, skipped int
 	var latest string
 	for batch, err := range github.Fetch(ctx, client, owner, repo, auth) {
 		if err != nil {
-			r.Abort()
 			return fmt.Errorf("github %s/%s: %w", owner, repo, err)
 		}
 		for _, rel := range batch {
@@ -174,35 +162,43 @@ func fetchGitHub(ctx context.Context, client *http.Client, cacheRoot, pkgName, o
 				tag = strings.TrimPrefix(tag, tagPrefix)
 			}
 
+			if d.Has(tag) {
+				skipped++
+				continue
+			}
+
 			data, err := json.Marshal(rel)
 			if err != nil {
-				r.Abort()
 				return fmt.Errorf("marshal %s: %w", tag, err)
 			}
-			if err := r.Put(tag, data); err != nil {
-				r.Abort()
+			if err := d.Put(tag, data); err != nil {
 				return err
 			}
-			count++
-			// First non-prerelease is latest (GitHub returns newest first).
+			added++
+
+			// GitHub returns newest first; first non-prerelease is latest.
 			if latest == "" && !rel.Prerelease {
 				latest = tag
 			}
 		}
 	}
 
-	if latest != "" {
-		if err := r.SetLatest(latest); err != nil {
-			r.Abort()
-			return err
-		}
-	}
-
-	if err := r.Commit(); err != nil {
+	if err := updateLatest(d, latest); err != nil {
 		return err
 	}
 
-	log.Printf("  %s: %d releases, latest=%s", pkgName, count, latest)
+	log.Printf("  %s: %d added, %d skipped, latest=%s", pkgName, added, skipped, d.Latest())
 	return nil
 }
 
+// updateLatest sets _latest if the candidate is newer than the current value.
+func updateLatest(d *rawcache.Dir, candidate string) error {
+	if candidate == "" {
+		return nil
+	}
+	current := d.Latest()
+	if current == "" || lexver.Compare(lexver.Parse(candidate), lexver.Parse(current)) > 0 {
+		return d.SetLatest(candidate)
+	}
+	return nil
+}
