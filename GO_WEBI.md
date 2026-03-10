@@ -378,19 +378,23 @@ hardware or runtime configuration beyond OS/arch/libc:
 - `fxdependent`, `fxdependentWinDesktop` — .NET framework-dependent (pwsh)
 - `profile` — debug profiling build (bun)
 - `source` — source archive, not a binary
+- `installer` — non-extractable installer format (.pkg, .msi, .deb, .rpm,
+  .dmg, .msixbundle, .AppImage, .exe-installer)
 
 The resolver **deprioritizes** assets with non-empty `Extra` — they're only
 selected when the user explicitly requests that variant (e.g., `?variant=rocm`).
+The full API still serves them for broader use cases.
 
 **Not a variant — arch micro-levels**: Bun's "baseline" is actually `amd64` (v1),
 and the non-baseline is `amd64v3`. These use the `Arch` field directly, and the
 resolver's existing fallback chain (`amd64v3` → `amd64v2` → `amd64`) handles
 selection naturally.
 
-### Format Filtering
+### Format Classification
 
-Webi installs from **extractable archives** (tar.gz, tar.xz, zip, 7z) and
-**bare binaries**. Non-extractable installer formats are filtered out:
+All assets are stored — nothing is dropped at classification time. Installer
+formats are tagged with `Extra = "installer"` so the resolver skips them by
+default while the full API can still serve them:
 
 - `.pkg` (macOS installer)
 - `.msi` (Windows installer)
@@ -400,8 +404,8 @@ Webi installs from **extractable archives** (tar.gz, tar.xz, zip, 7z) and
 - `.msixbundle`, `.AppImage`
 - `.exe` when it's an installer, not the actual binary
 
-This filtering happens at classification time (`isMetaAsset` / format checks)
-so these assets never reach storage.
+Webi's default install path uses **extractable archives** (tar.gz, tar.xz, zip,
+7z) and **bare binaries** only.
 
 ### Legacy Export Filtering
 
