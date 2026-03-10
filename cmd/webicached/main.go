@@ -586,19 +586,18 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 		// API-provided tarball/zipball URLs. These can also be installed
 		// via `git clone --branch <tag>` as a fallback.
 		//
-		// The API's tarball_url redirects to:
-		//   codeload.github.com/{owner}/{repo}/legacy.tar.gz/refs/tags/{tag}
-		// which serves Content-Disposition with a filename like:
-		//   Owner-Repo-Tag-0-gCommitHash.tar.gz
-		// We use the API URL directly and construct the legacy filename
-		// pattern (without the commit hash, which isn't in the API data).
+		// TODO: HEAD-follow the tarball_url at fetch time to get the
+		// resolved codeload URL and Content-Disposition filename
+		// (Owner-Repo-Tag-0-gCommitHash.ext). For now, use the tag
+		// as the filename since the actual download name comes from
+		// Content-Disposition anyway.
 		if len(rel.Assets) == 0 {
 			owner := conf.Owner
 			repo := conf.Repo
 			tag := rel.TagName
 			if rel.TarballURL != "" {
 				assets = append(assets, storage.Asset{
-					Filename: owner + "-" + repo + "-" + tag + ".tar.gz",
+					Filename: tag + ".tar.gz",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
@@ -610,7 +609,7 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 			}
 			if rel.ZipballURL != "" {
 				assets = append(assets, storage.Asset{
-					Filename: owner + "-" + repo + "-" + tag + ".zip",
+					Filename: tag + ".zip",
 					Version:  version,
 					Channel:  channel,
 					OS:       "posix_2017",
