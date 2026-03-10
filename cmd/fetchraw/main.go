@@ -27,9 +27,15 @@ import (
 	"github.com/webinstall/webi-installers/internal/installerconf"
 	"github.com/webinstall/webi-installers/internal/lexver"
 	"github.com/webinstall/webi-installers/internal/rawcache"
+	"github.com/webinstall/webi-installers/internal/releases/flutterdist"
 	"github.com/webinstall/webi-installers/internal/releases/github"
 	"github.com/webinstall/webi-installers/internal/releases/githubish"
+	"github.com/webinstall/webi-installers/internal/releases/golang"
+	"github.com/webinstall/webi-installers/internal/releases/hashicorp"
+	"github.com/webinstall/webi-installers/internal/releases/iterm2dist"
+	"github.com/webinstall/webi-installers/internal/releases/juliadist"
 	"github.com/webinstall/webi-installers/internal/releases/nodedist"
+	"github.com/webinstall/webi-installers/internal/releases/zigdist"
 )
 
 func main() {
@@ -79,6 +85,18 @@ func main() {
 			err = fetchGitHub(ctx, client, *cacheDir, pkg.name, pkg.conf, auth)
 		case "nodedist":
 			err = fetchNodeDist(ctx, client, *cacheDir, pkg.name, pkg.conf)
+		case "golang":
+			err = fetchGolang(ctx, client, *cacheDir, pkg.name)
+		case "zigdist":
+			err = fetchZig(ctx, client, *cacheDir, pkg.name)
+		case "flutterdist":
+			err = fetchFlutter(ctx, client, *cacheDir, pkg.name)
+		case "iterm2dist":
+			err = fetchITerm2(ctx, client, *cacheDir, pkg.name)
+		case "hashicorp":
+			err = fetchHashiCorp(ctx, client, *cacheDir, pkg.name, pkg.conf)
+		case "juliadist":
+			err = fetchJulia(ctx, client, *cacheDir, pkg.name)
 		default:
 			log.Printf("  %s: unknown source %q, skipping", pkg.name, pkg.conf.Source())
 			continue
@@ -249,5 +267,299 @@ func updateLatest(d *rawcache.Dir, candidate string) error {
 	if current == "" || lexver.Compare(lexver.Parse(candidate), lexver.Parse(current)) > 0 {
 		return d.SetLatest(candidate)
 	}
+	return nil
+}
+
+func fetchGolang(ctx context.Context, client *http.Client, cacheRoot, pkgName string) error {
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for batch, err := range golang.Fetch(ctx, client) {
+		if err != nil {
+			return fmt.Errorf("golang: %w", err)
+		}
+		for _, rel := range batch {
+			tag := rel.Version // "go1.24.1"
+			data, err := json.Marshal(rel)
+			if err != nil {
+				return fmt.Errorf("golang marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			if latest == "" && rel.Stable {
+				latest = tag
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
+	return nil
+}
+
+func fetchZig(ctx context.Context, client *http.Client, cacheRoot, pkgName string) error {
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for batch, err := range zigdist.Fetch(ctx, client) {
+		if err != nil {
+			return fmt.Errorf("zigdist: %w", err)
+		}
+		for _, rel := range batch {
+			tag := rel.Version
+			data, err := json.Marshal(rel)
+			if err != nil {
+				return fmt.Errorf("zigdist marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			// Stable versions have dots and no dev/pre markers.
+			isStable := strings.Contains(tag, ".") && !strings.ContainsAny(tag, "+-")
+			if isStable {
+				if latest == "" || lexver.Compare(lexver.Parse(tag), lexver.Parse(latest)) > 0 {
+					latest = tag
+				}
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
+	return nil
+}
+
+func fetchFlutter(ctx context.Context, client *http.Client, cacheRoot, pkgName string) error {
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for batch, err := range flutterdist.Fetch(ctx, client) {
+		if err != nil {
+			return fmt.Errorf("flutterdist: %w", err)
+		}
+		for _, rel := range batch {
+			// Use version+channel+os as the tag to distinguish per-OS entries.
+			tag := fmt.Sprintf("%s-%s-%s", rel.Version, rel.Channel, rel.OS)
+			data, err := json.Marshal(rel)
+			if err != nil {
+				return fmt.Errorf("flutterdist marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			if latest == "" && rel.Channel == "stable" {
+				latest = tag
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
+	return nil
+}
+
+func fetchITerm2(ctx context.Context, client *http.Client, cacheRoot, pkgName string) error {
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for batch, err := range iterm2dist.Fetch(ctx, client) {
+		if err != nil {
+			return fmt.Errorf("iterm2dist: %w", err)
+		}
+		for _, entry := range batch {
+			tag := entry.Version
+			if tag == "" {
+				continue
+			}
+			data, err := json.Marshal(entry)
+			if err != nil {
+				return fmt.Errorf("iterm2dist marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			if latest == "" && entry.Channel == "stable" {
+				latest = tag
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
+	return nil
+}
+
+func fetchHashiCorp(ctx context.Context, client *http.Client, cacheRoot, pkgName string, conf *installerconf.Conf) error {
+	product := conf.Get("product")
+	if product == "" {
+		return fmt.Errorf("missing product in releases.conf")
+	}
+
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for idx, err := range hashicorp.Fetch(ctx, client, product) {
+		if err != nil {
+			return fmt.Errorf("hashicorp %s: %w", product, err)
+		}
+		for tag, ver := range idx.Versions {
+			data, err := json.Marshal(ver)
+			if err != nil {
+				return fmt.Errorf("hashicorp marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			// Stable = no prerelease markers. Compare all to find highest.
+			isStable := !strings.ContainsAny(tag, "-+")
+			if isStable {
+				if latest == "" || lexver.Compare(lexver.Parse(tag), lexver.Parse(latest)) > 0 {
+					latest = tag
+				}
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
+	return nil
+}
+
+func fetchJulia(ctx context.Context, client *http.Client, cacheRoot, pkgName string) error {
+	d, err := rawcache.Open(filepath.Join(cacheRoot, pkgName))
+	if err != nil {
+		return err
+	}
+
+	var added, changed, skipped int
+	var latest string
+	for batch, err := range juliadist.Fetch(ctx, client) {
+		if err != nil {
+			return fmt.Errorf("juliadist: %w", err)
+		}
+		for _, rel := range batch {
+			tag := rel.Version
+			data, err := json.Marshal(rel)
+			if err != nil {
+				return fmt.Errorf("juliadist marshal %s: %w", tag, err)
+			}
+
+			action, err := d.Merge(tag, data)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case "added":
+				added++
+			case "changed":
+				changed++
+			default:
+				skipped++
+			}
+
+			if rel.Stable {
+				if latest == "" || lexver.Compare(lexver.Parse(tag), lexver.Parse(latest)) > 0 {
+					latest = tag
+				}
+			}
+		}
+	}
+
+	if err := updateLatest(d, latest); err != nil {
+		return err
+	}
+
+	log.Printf("  %s: +%d ~%d =%d latest=%s", pkgName, added, changed, skipped, d.Latest())
 	return nil
 }
