@@ -26,20 +26,29 @@ cmd/
   webid/              # main HTTP server
   webicached/         # release cache daemon (fetches + stores releases)
 internal/
-  buildmeta/          # OS, arch, libc, format constants and enums
-  classify/           # build artifact classification (filename → target)
+  buildmeta/          # OS, arch, libc, format constants and enums + CompatArches
+  classify/           # build artifact classification (filename/URL → target)
   httpclient/         # resilient net/http client with best-practice defaults
   lexver/             # lexicographic version parsing and sorting
-  releases/           # release fetching (GitHub, Gitea, git-tag, custom)
-    github/
-    gitea/
-    gittag/
+  platlatest/         # per-platform latest version index (triplet → version)
+  rawcache/           # double-buffered raw upstream API response storage
+  releases/           # release fetching — one package per source type
+    github/           #   GitHub (thin wrapper over githubish)
+    githubish/        #   generic GitHub-compatible API with Link header pagination
+    githubsrc/        #   GitHub source archives (tarball/zipball URLs)
+    gitea/            #   Gitea/Forgejo (own types, limit param, Link header)
+    giteasrc/         #   Gitea source archives
+    gitlab/           #   GitLab (own types, X-Total-Pages pagination)
+    gitlabsrc/        #   GitLab source archives
+    gittag/           #   bare git clone + tag listing
+    node/             #   Node.js (official + unofficial builds)
+    nodedist/         #   generic Node.js-style dist/index.json API
   render/             # installer script template rendering
   storage/            # release storage interface + implementations
     storage.go        # interface definition
     fsstore/          # filesystem (JSON cache, like current _cache/)
     pgstore/          # PostgreSQL (via sqlc + pgx)
-  uadetect/           # User-Agent → OS/arch/libc detection
+  uadetect/           # User-Agent → OS/arch/libc detection (regex-based)
 ```
 
 ## Public API Surface (Must Remain Stable)
@@ -188,18 +197,35 @@ func FetchReleases(ctx context.Context, client *httpclient.Client,
 
 ### Build Classification (`internal/classify`)
 
-Simplified from the current regex-heavy approach. Strategy:
+The classifier is the **80/20 default** — it handles the happy path where
+standard toolchains (goreleaser, cargo-dist, Zig, Rust) produce predictable
+filenames. It is not the authority; the per-installer config can override
+anything it detects.
 
-1. **Known toolchain patterns first.** Goreleaser, cargo-dist, and Go's release
-   naming are predictable. Match those structures directly.
-2. **Fallback regex for legacy.** Keep a simpler set of OS/arch/libc/ext regexes
-   for packages that don't use standard toolchains.
-3. **Release-fetcher does the hard work.** The `releases.js` (or its Go
-   equivalent config) is responsible for filtering irrelevant assets and
-   normalizing oddball names _before_ classification sees them.
+- Regex-based detection with priority ordering (x86_64 before x86, arm64
+  before armv7, amd64v4/v3/v2 before baseline).
+- OS-aware fixups: bare "arm" on Windows → ARM64.
+- Accepts filenames or full download URLs (signal may be in path segments).
+- Undetected fields are empty, not guessed.
 
-Target triplet format: `{os}-{arch}-{libc}` (simplified from the current
-4-part `{arch}-{vendor}-{os}-{libc}`).
+Target triplet format: `{os}-{arch}-{libc}`.
+
+### Fallback & Compatibility
+
+Arch and libc fallbacks are **not universal rules**. They vary by OS, package,
+and even package version:
+
+- **OS-level arch compat** (`buildmeta.CompatArches`): universal facts like
+  "darwin arm64 runs x86_64 via Rosetta 2", "windows arm64 emulates x86_64".
+  Includes macOS Universal1 (PPC+x86) and Universal2 (x86_64+ARM64).
+- **Libc compat**: per-package, per-version. Musl can be static (runs anywhere)
+  or dynamically linked (needs polyfill). Windows GNU can be dependency-free or
+  need mingw. This changes between versions of the same package.
+- **Arch micro-levels**: amd64v4→v3→v2→v1 fallback is universal, but a package
+  may drop specific micro-arch builds between versions.
+
+Per-installer config declares the package-specific rules. The resolver combines
+installer config + platlatest + CompatArches to pick the right binary.
 
 ### Installer Rendering (`internal/render`)
 
@@ -231,20 +257,35 @@ Node.js server.
 ### Phase 0: Foundation
 
 - [x] `internal/buildmeta` — shared vocabulary (OS, arch, libc, format, channel)
+- [x] `internal/buildmeta` — `CompatArches(os, arch)` — OS-level arch compat facts
+- [x] `internal/buildmeta` — amd64 micro-arch levels (v1–v4), universal binary types
 - [x] `internal/lexver` — version strings → comparable strings
 - [x] `internal/httpclient` — resilient HTTP client for upstream API calls
-- [x] `internal/uadetect` — User-Agent → OS/arch/libc
+- [x] `internal/uadetect` — User-Agent → OS/arch/libc (regex-based)
 - [x] Go module init (`go 1.26.1`, stdlib only)
 - [ ] CI setup
+- [ ] CPU micro-arch detection in bootstrap scripts (POSIX + PowerShell)
 
-### Phase 1: Release Fetching
+### Phase 1: Release Fetching & Caching
 
-- [ ] `internal/releases/github` — GitHub releases fetcher
-- [ ] `internal/releases/gitea` — Gitea releases fetcher
-- [ ] `internal/releases/gittag` — git tag listing
-- [ ] `internal/classify` — build artifact classifier
+- [x] `internal/releases/githubish` — generic GitHub-compatible API fetcher
+- [x] `internal/releases/github` — GitHub releases (thin wrapper)
+- [x] `internal/releases/githubsrc` — GitHub source archives
+- [x] `internal/releases/gitea` — Gitea/Forgejo releases (own types)
+- [x] `internal/releases/giteasrc` — Gitea source archives
+- [x] `internal/releases/gitlab` — GitLab releases (own types, X-Total-Pages)
+- [x] `internal/releases/gitlabsrc` — GitLab source archives
+- [x] `internal/releases/gittag` — git tag listing (bare clone)
+- [x] `internal/releases/nodedist` — Node.js-style dist/index.json API
+- [x] `internal/releases/node` — Node.js (official + unofficial builds)
+- [x] `internal/rawcache` — double-buffered raw upstream response storage
+- [x] `internal/classify` — build artifact classifier (80/20, filename→target)
+- [x] `internal/platlatest` — per-platform latest version index
+- [ ] End-to-end: fetch complete histories for a few real packages
+- [ ] Per-installer config format (fallback rules, version-ranged overrides)
+- [ ] Resolver (platlatest + installer config + CompatArches → pick binary)
 - [ ] `internal/storage` — interface definition
-- [ ] `internal/storage/fsstore` — filesystem implementation with double-buffer
+- [ ] `internal/storage/fsstore` — filesystem implementation
 - [ ] `cmd/webicached` — cache daemon that can replace the Node.js caching
 
 **Integration point:** `webicached` writes the same `_cache/` JSON format. The
@@ -318,6 +359,12 @@ behavior must be preserved for backward compatibility.
   processes? Kubernetes pods?
 - [ ] Rate limiting for GitHub API calls in `webicached` — how to coordinate
   across multiple instances?
+- [ ] Per-installer config format: what structure best expresses version-ranged
+  libc overrides, arch fallback overrides, and nonstandard asset naming? Go
+  struct + TOML/YAML? Go code (compiled into webicached)?
+- [ ] CPU micro-arch detection: how should POSIX and PowerShell bootstrap scripts
+  detect amd64v1/v2/v3/v4? Check /proc/cpuinfo flags (Linux), sysctl
+  hw.optional (macOS), .NET intrinsics (Windows)?
 
 ## Current Node.js Architecture (Reference)
 
