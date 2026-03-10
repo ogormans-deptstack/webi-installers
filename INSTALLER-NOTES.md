@@ -234,6 +234,9 @@ Archive contains the binary (and maybe LICENSE/README) at the top level, no wrap
 | sttr | `sttr_0.2.9_linux_amd64.tar.gz` | `sttr`, LICENSE, README.md |
 | uuidv7 | `uuidv7_v1.0.1-next_linux_amd64.tar.gz` | `uuidv7`, LICENSE, README.md |
 | xcaddy | `xcaddy_0.4.5_linux_amd64.tar.gz` | `xcaddy`, LICENSE, README.md |
+| deno | `denort-x86_64-unknown-linux-gnu.zip` | `denort` |
+| k9s | `k9s_Linux_amd64.tar.gz` | `k9s`, LICENSE, README.md |
+| terraform | `terraform_1.9.8_linux_amd64.zip` | `terraform`, LICENSE.txt |
 
 **Install pattern**: extract, move binary to `~/.local/opt/{pkg}-{ver}/bin/{binary}`, symlink.
 
@@ -296,6 +299,7 @@ Archive already follows `bin/` + `share/` layout.
 |---------|---------|--------|
 | gh | tar.gz | `gh_{ver}_{os}_{arch}/bin/gh` + `share/man/man1/*.1` (129 files of man pages) |
 | ollama (Linux) | tar.zst | `bin/ollama` + `lib/ollama/` |
+| pandoc | tar.gz | `pandoc-{ver}/bin/{pandoc,pandoc-server,pandoc-lua}` + `share/man/man1/*.1.gz` |
 
 **Install pattern**: extract directly into opt (already correct layout).
 
@@ -318,12 +322,12 @@ Binary in archive doesn't match expected binary name.
 | iterm2 | macOS-only .zip (.app bundle) |
 | cmake | 61MB, well-known layout (bin/ + share/ + doc/) |
 | dashcore | 58MB, cryptocurrency daemon + CLI tools |
-| deno | 34MB zip, single binary |
-| k9s | 36MB, single binary (goreleaser pattern) |
+| deno | 34MB zip, single binary — confirmed Pattern A |
+| k9s | 36MB, single binary — confirmed Pattern A |
 | mutagen | 56MB, file sync tool |
-| pandoc | 33MB, academic document converter (bin/ + share/) |
+| pandoc | 33MB, FHS layout — confirmed Pattern E (bin/ + share/man/) |
 | pwsh | 74MB, .NET runtime + many DLLs |
-| terraform | HashiCorp zip, single binary |
+| terraform | HashiCorp zip, single binary — confirmed Pattern A |
 | terramate | 45MB, single binary |
 | tinygo | 56MB, compiler toolchain |
 | ffmpeg | Special: uses separate bare binary downloads |
