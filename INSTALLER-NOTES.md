@@ -434,3 +434,47 @@ didn't actually change — just the naming convention.
 
 **hugo**: Early releases (2014) were bare binaries. Switched to zip (2014-2017),
 then tar.gz (2017+). Internal structure always been flat (hugo, LICENSE, README).
+
+---
+
+## Install Script Audit Results
+
+All 116+ packages audited. Changes made to install.sh scripts:
+
+### Completions + Man Pages Added (Pattern C)
+
+| Package | Completions Dir | Man Page | Commit |
+|---------|----------------|----------|--------|
+| bat | `autocomplete/{bat.bash,.fish,.zsh}` | `bat.1` | 1803c20 |
+| fd | `autocomplete/{fd.bash,.fish,_fd}` | `fd.1` | 1803c20 |
+| goreleaser | `completions/{.bash,.fish,.zsh}` | `manpages/*.1.gz` | 1803c20 |
+| lsd | `autocomplete/{lsd.bash-completion,.fish,_lsd}` | `lsd.1` | 1803c20 |
+| rg | `complete/{rg.bash,.fish,_rg}` | `doc/rg.1` | 1803c20 |
+| sd | `completions/{sd.bash,.fish,_sd}` | `sd.1` | 1803c20 |
+| watchexec | `completions/{bash,fish,zsh}` | `watchexec.1` | 1803c20 |
+| zoxide | `completions/{zoxide.bash,.fish,_zoxide}` | `man/` dir | 1803c20 |
+
+### Other Fixes
+
+| Package | Fix | Commit |
+|---------|-----|--------|
+| ollama | Handle 3 eras: linux tar.zst, macOS .app, bare binary; fix `test -f` → `test -d` for lib/ | b08e678 |
+| yq | Man page to versioned `$pkg_src_dir/share/man/` instead of global | b08e678 |
+| pandoc | Install man pages from `share/man/` in FHS archive | a7b3a57 |
+| gh | Man pages from `share/man/` (already done in prior commit) | 1803c20 |
+
+### Verified Correct (no changes needed)
+
+All remaining packages were audited and found correct for their archive structure:
+- **Pattern A** (bare binary): awless, caddy, cilium, curlie, dashmsg, deno, dotenv,
+  dotenv-linter, ffuf, fzf, gitdeploy, gprox, grype, k9s, keypairs, koji, lf,
+  monorel, ots, runzip, sclient, sqlc, sqlpkg, sttr, terraform, uuidv7, xcaddy
+- **Pattern B** (subdirectory): delta, hexyl, kubectx, kubens, shellcheck, trip, xsv
+- **Pattern D** (binary + libs): psql/pg, sass, syncthing, xz
+- **Pattern E** (FHS): cmake, tinygo
+- **Pattern F** (renamed binary): pathman
+- **Pattern G** (SDK): go, node, zig, flutter, julia
+- **Pattern H** (.NET): pwsh
+- **Pattern I** (multi-binary): dashcore, mutagen
+- **WEBI_SINGLE**: hugo, hugo-extended, jq, kind, shfmt, arc, atomicparsley,
+  chromedriver, comrak, ffmpeg, gitea, bun
