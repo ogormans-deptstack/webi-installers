@@ -57,6 +57,7 @@ func main() {
 	liveDir := flag.String("live", "./LIVE_cache", "path to Node.js LIVE_cache directory")
 	goDir := flag.String("go", "./_cache", "path to Go cache directory")
 	summary := flag.Bool("summary", false, "only print summary, not per-package details")
+	diffsOnly := flag.Bool("diffs", false, "only show packages with asset differences (skip matches)")
 	latest := flag.Bool("latest", false, "only compare latest version in each cache")
 	windowed := flag.Bool("windowed", false, "limit Go versions to the Node.js version range (2nd to 2nd-to-last)")
 	flag.Parse()
@@ -101,7 +102,7 @@ func main() {
 	if *summary {
 		printSummary(diffs)
 	} else {
-		printDetails(diffs)
+		printDetails(diffs, *diffsOnly)
 	}
 }
 
@@ -505,8 +506,12 @@ func printSummary(diffs []packageDiff) {
 	}
 }
 
-func printDetails(diffs []packageDiff) {
+func printDetails(diffs []packageDiff, diffsOnly bool) {
 	for _, d := range diffs {
+		if diffsOnly && len(d.OnlyInLive) == 0 && len(d.OnlyInGo) == 0 {
+			continue
+		}
+
 		fmt.Printf("=== %s ===\n", d.Name)
 		fmt.Printf("  Categories: %s\n", strings.Join(d.Categories, ", "))
 		fmt.Printf("  Live: %d assets, %d versions  |  Go: %d assets, %d versions\n",
