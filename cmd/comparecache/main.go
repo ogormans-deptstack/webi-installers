@@ -507,6 +507,12 @@ func isLiveNoise(name string) bool {
 		return true
 	}
 
+	// Source tarballs (e.g. gitea-src-1.25.4.tar.gz) — not installable.
+	if strings.Contains(lower, "-src-") || strings.HasPrefix(lower, "src-") ||
+		lower == "src.tar.gz" || lower == "src.zip" {
+		return true
+	}
+
 	return false
 }
 
