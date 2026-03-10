@@ -105,6 +105,10 @@ func discover(dir string) ([]pkgConf, error) {
 	var packages []pkgConf
 	for _, path := range matches {
 		name := filepath.Base(filepath.Dir(path))
+		// Skip infrastructure dirs (_example, _webi, _common, etc.)
+		if strings.HasPrefix(name, "_") {
+			continue
+		}
 		conf, err := installerconf.Read(path)
 		if err != nil {
 			log.Printf("warning: %s: %v", path, err)
