@@ -14,7 +14,7 @@
 //	source = github
 //	owner = jqlang
 //	repo = jq
-//	version_prefix = jq-
+//	version_prefixes = jq-
 //
 // With filename exclusions (hugo publishes _extended_ variants):
 //
@@ -73,9 +73,12 @@ type Conf struct {
 	// version string. Example: "tools/monorel/"
 	TagPrefix string
 
-	// VersionPrefix is stripped from version strings.
-	// Example: jq tags as "jq-1.7.1" → set to "jq-" to get "1.7.1".
-	VersionPrefix string
+	// VersionPrefixes are stripped from version/tag strings.
+	// Comma-separated. Each release tag is checked against these in order;
+	// the first match is stripped. Projects may change tag conventions across
+	// versions (e.g. "jq-1.7.1" in older releases, bare "1.8.0" later).
+	// Example: "jq-, cli-"
+	VersionPrefixes []string
 
 	// Exclude lists filename substrings to filter out.
 	// Assets whose name contains any of these are skipped.
@@ -116,7 +119,18 @@ func Read(path string) (*Conf, error) {
 	c.Owner = raw["owner"]
 	c.Repo = raw["repo"]
 	c.TagPrefix = raw["tag_prefix"]
-	c.VersionPrefix = raw["version_prefix"]
+
+	if v := raw["version_prefixes"]; v != "" {
+		for _, p := range strings.Split(v, ",") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				c.VersionPrefixes = append(c.VersionPrefixes, p)
+			}
+		}
+	} else if v := raw["version_prefix"]; v != "" {
+		// Back-compat with singular form.
+		c.VersionPrefixes = []string{v}
+	}
 
 	if v := raw["base_url"]; v != "" {
 		c.BaseURL = v
@@ -137,7 +151,7 @@ func Read(path string) (*Conf, error) {
 	known := map[string]bool{
 		"source": true, "owner": true, "repo": true,
 		"base_url": true, "url": true,
-		"tag_prefix": true, "version_prefix": true,
+		"tag_prefix": true, "version_prefix": true, "version_prefixes": true,
 		"exclude": true,
 	}
 	for k, v := range raw {

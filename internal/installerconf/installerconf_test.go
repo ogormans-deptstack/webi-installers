@@ -18,21 +18,27 @@ repo = bat
 	assertEqual(t, "Owner", c.Owner, "sharkdp")
 	assertEqual(t, "Repo", c.Repo, "bat")
 	assertEqual(t, "TagPrefix", c.TagPrefix, "")
-	assertEqual(t, "VersionPrefix", c.VersionPrefix, "")
+	if len(c.VersionPrefixes) != 0 {
+		t.Errorf("VersionPrefixes = %v, want empty", c.VersionPrefixes)
+	}
 
 	if len(c.Exclude) != 0 {
 		t.Errorf("Exclude = %v, want empty", c.Exclude)
 	}
 }
 
-func TestVersionPrefix(t *testing.T) {
+func TestVersionPrefixes(t *testing.T) {
 	c := confFromString(t, `
 source = github
 owner = jqlang
 repo = jq
-version_prefix = jq-
+version_prefixes = jq-, cli-
 `)
-	assertEqual(t, "VersionPrefix", c.VersionPrefix, "jq-")
+	if len(c.VersionPrefixes) != 2 {
+		t.Fatalf("VersionPrefixes has %d items, want 2: %v", len(c.VersionPrefixes), c.VersionPrefixes)
+	}
+	assertEqual(t, "VersionPrefixes[0]", c.VersionPrefixes[0], "jq-")
+	assertEqual(t, "VersionPrefixes[1]", c.VersionPrefixes[1], "cli-")
 }
 
 func TestExclude(t *testing.T) {
