@@ -75,7 +75,6 @@ func (a Asset) toLegacy() LegacyAsset {
 //   - solaris/illumos → sunos  (Node.js only knows "sunos")
 //
 // Package-specific rules replicate per-package overrides in production's releases.js:
-//   - go:    armv6 → arm  (Go dist API uses bare "arm"; prod keeps it as-is)
 //   - ffmpeg: Windows .gz → .exe  (prod releases.js: rel.ext = 'exe')
 func legacyFieldBackport(pkg string, a Asset) Asset {
 	// Global OS normalization: Node.js uses "sunos" for both Solaris and Illumos.
@@ -84,10 +83,6 @@ func legacyFieldBackport(pkg string, a Asset) Asset {
 	}
 
 	switch pkg {
-	case "go":
-		if a.Arch == "armv6" {
-			a.Arch = "arm"
-		}
 	case "ffmpeg":
 		if a.OS == "windows" {
 			switch a.Format {
