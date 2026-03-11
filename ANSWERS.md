@@ -53,13 +53,19 @@ source-only GitHub releases get tarball + zipball + git entries.
 entry. The resolver's version-descending + platform-first-then-any order means
 git assets for old versions are never selected when newer binaries exist.
 
-**No fix needed** in the Go resolver or classifier. The behavior is correct.
+**Update (FIXED)**: The Go classifier now has three distinct strategies:
 
-**Update**: Confirmed that regenerating the cache alone does NOT fix the Node.js
-resolver. With the old ANYOS-first enumeration, jq and caddy still resolve to
-`.git`, and rg still gets v0.1.6. The fix is in the Node.js resolver's triplet
-enumeration order — specific OS must come before ANYOS, and versions must iterate
-newest-first. The cache data is correct; the resolution logic was wrong.
+1. **`github`** (`github_repo =`) — binary assets only. Releases with no
+   uploaded assets are skipped entirely. No more `.git`/tarball/zipball entries
+   for caddy, jq, shellcheck, etc.
+2. **`githubsource`** (`github_source =`) — source tarball + zipball from
+   GitHub releases API. For packages installed from source (shell scripts).
+   aliasman, duckdns.sh, serviceman now use this.
+3. **`gittag`** (`git_url =`) — git clone + tag enumeration (unchanged).
+
+The Node.js resolver fix (specific OS before ANYOS, versions newest-first)
+is still needed on your side. But the Go cache no longer produces the
+problematic ANYOS entries for binary packages.
 
 ## Re: Issue 4 — darwin-universal (Hugo)
 
