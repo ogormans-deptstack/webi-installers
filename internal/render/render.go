@@ -133,6 +133,74 @@ func Bash(tplPath, installersDir, pkgName string, p Params) (string, error) {
 	return text, nil
 }
 
+// PowerShell renders a complete PowerShell installer script by injecting
+// params into the template and splicing in the package's install.ps1.
+func PowerShell(tplPath, installersDir, pkgName string, p Params) (string, error) {
+	tpl, err := os.ReadFile(tplPath)
+	if err != nil {
+		return "", fmt.Errorf("render: read template: %w", err)
+	}
+
+	installPath := filepath.Join(installersDir, pkgName, "install.ps1")
+	installPs1, err := os.ReadFile(installPath)
+	if err != nil {
+		return "", fmt.Errorf("render: read %s/install.ps1: %w", pkgName, err)
+	}
+
+	text := string(tpl)
+
+	vars := []struct {
+		name  string
+		value string
+	}{
+		{"WEBI_PKG", p.PkgName + "@" + p.Tag},
+		{"WEBI_HOST", p.Host},
+		{"WEBI_VERSION", p.Version},
+		{"WEBI_GIT_TAG", p.GitTag},
+		{"WEBI_PKG_URL", p.PkgURL},
+		{"WEBI_PKG_FILE", p.PkgFile},
+		{"WEBI_PKG_PATHNAME", p.PkgFile},
+		{"PKG_NAME", p.PkgName},
+	}
+
+	for _, v := range vars {
+		text = InjectPSVar(text, v.name, v.value)
+	}
+
+	text = strings.Replace(text, "# {{ installer }}", string(installPs1), 1)
+	text = strings.Replace(text, "{{ installer }}", string(installPs1), 1)
+
+	return text, nil
+}
+
+// InjectPSVar replaces a PowerShell template variable line with its value.
+// Matches lines like:
+//
+//	#$Env:WEBI_VERSION = v12.16.2
+//	$Env:WEBI_HOST = 'https://webinstall.dev'
+func InjectPSVar(text, name, value string) string {
+	p := getPSVarPattern(name)
+	return p.ReplaceAllString(text, "${1}$$Env:"+name+" = '"+sanitizePSValue(value)+"'")
+}
+
+var psVarPatterns = map[string]*regexp.Regexp{}
+
+func getPSVarPattern(name string) *regexp.Regexp {
+	if p, ok := psVarPatterns[name]; ok {
+		return p
+	}
+	// Match: optional leading whitespace, optional #, $Env:NAME, =, rest of line
+	p := regexp.MustCompile(`(?m)^([ \t]*)#?\$Env:` + regexp.QuoteMeta(name) + `\s*=.*$`)
+	psVarPatterns[name] = p
+	return p
+}
+
+// sanitizePSValue escapes single quotes for PowerShell single-quoted strings.
+// In PowerShell, single quotes inside single-quoted strings are doubled: ''
+func sanitizePSValue(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
+}
+
 // varPattern matches shell variable declarations in the template.
 // Matches lines like:
 //

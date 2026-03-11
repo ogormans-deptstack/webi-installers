@@ -75,6 +75,33 @@ func TestInstallerFull(t *testing.T) {
 	t.Logf("installer size: %d bytes", len(body))
 }
 
+// TestInstallerPowerShell verifies /api/installers/{pkg}.ps1 returns a PowerShell installer.
+func TestInstallerPowerShell(t *testing.T) {
+	srv, ts := newTestServer(t)
+
+	pkg := "node"
+	if srv.getPackage(pkg) == nil {
+		t.Skipf("package %s not in cache", pkg)
+	}
+
+	code, body := getWithUA(t, ts, "/api/installers/node@stable.ps1", "AMD64/unknown Windows/10.0.19045 msvc")
+	if code != 200 {
+		t.Fatalf("status %d: %s", code, body[:min(len(body), 500)])
+	}
+
+	if !strings.Contains(body, "$Env:WEBI_VERSION") {
+		t.Error("missing $Env:WEBI_VERSION in PS1 installer")
+	}
+	if !strings.Contains(body, "$Env:WEBI_PKG_URL") {
+		t.Error("missing $Env:WEBI_PKG_URL in PS1 installer")
+	}
+	if !strings.Contains(body, "$Env:PKG_NAME") {
+		t.Error("missing $Env:PKG_NAME in PS1 installer")
+	}
+
+	t.Logf("PS1 installer size: %d bytes", len(body))
+}
+
 // TestInstallerSelfHosted verifies selfhosted packages get a script without resolution.
 func TestInstallerSelfHosted(t *testing.T) {
 	_, ts := newTestServer(t)

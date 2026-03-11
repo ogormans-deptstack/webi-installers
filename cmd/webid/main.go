@@ -668,12 +668,6 @@ func (s *server) handleInstaller(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "package name required", http.StatusBadRequest)
 		return
 	}
-	if ext == "ps1" {
-		// TODO: PowerShell installer rendering.
-		http.Error(w, "PowerShell installer not yet implemented", http.StatusNotImplemented)
-		return
-	}
-
 	// Detect platform from User-Agent.
 	ua := uadetect.FromRequest(r)
 	if ua.OS == "" {
@@ -763,11 +757,18 @@ func (s *server) handleInstaller(w http.ResponseWriter, r *http.Request) {
 	p.ReleasesURL = fmt.Sprintf("%s/api/releases/%s@%s.tab?os=%s&arch=%s&libc=%s&formats=tar&pretty=true",
 		baseURL, pkg, tag, p.OS, p.Arch, p.Libc)
 
-	tplPath := filepath.Join(s.installersDir, "_webi", "package-install.tpl.sh")
-	script, err := render.Bash(tplPath, s.installersDir, pkg, p)
-	if err != nil {
-		log.Printf("render %s: %v", pkg, err)
-		http.Error(w, fmt.Sprintf("failed to render installer for %q: %v", pkg, err), http.StatusInternalServerError)
+	var script string
+	var renderErr error
+	if ext == "ps1" {
+		tplPath := filepath.Join(s.installersDir, "_webi", "package-install.tpl.ps1")
+		script, renderErr = render.PowerShell(tplPath, s.installersDir, pkg, p)
+	} else {
+		tplPath := filepath.Join(s.installersDir, "_webi", "package-install.tpl.sh")
+		script, renderErr = render.Bash(tplPath, s.installersDir, pkg, p)
+	}
+	if renderErr != nil {
+		log.Printf("render %s: %v", pkg, renderErr)
+		http.Error(w, fmt.Sprintf("failed to render installer for %q: %v", pkg, renderErr), http.StatusInternalServerError)
 		return
 	}
 
