@@ -19,6 +19,7 @@ import (
 	"github.com/webinstall/webi-installers/internal/releases/bun"
 	"github.com/webinstall/webi-installers/internal/releases/chromedist"
 	"github.com/webinstall/webi-installers/internal/releases/fish"
+	"github.com/webinstall/webi-installers/internal/releases/gitea"
 	"github.com/webinstall/webi-installers/internal/releases/flutterdist"
 	"github.com/webinstall/webi-installers/internal/releases/git"
 	"github.com/webinstall/webi-installers/internal/releases/golang"
@@ -94,6 +95,8 @@ func TagVariants(pkg string, assets []storage.Asset) {
 		fish.TagVariants(assets)
 	case "git":
 		git.TagVariants(assets)
+	case "gitea":
+		gitea.TagVariants(assets)
 	case "lsd":
 		lsd.TagVariants(assets)
 	case "node":
