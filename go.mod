@@ -8,6 +8,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jszwec/csvutil v1.10.0 // indirect
+	github.com/therootcompany/golib/http/middleware/v2 v2.0.1 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
 )

@@ -32,6 +32,8 @@ import (
 	"github.com/webinstall/webi-installers/internal/render"
 	"github.com/webinstall/webi-installers/internal/resolve"
 	"github.com/webinstall/webi-installers/internal/resolver"
+	middleware "github.com/therootcompany/golib/http/middleware/v2"
+
 	"github.com/webinstall/webi-installers/internal/storage"
 	"github.com/webinstall/webi-installers/internal/storage/fsstore"
 	"github.com/webinstall/webi-installers/internal/storage/pgstore"
@@ -70,21 +72,22 @@ func main() {
 	srv.loadAll()
 
 	mux := http.NewServeMux()
+	mmux := middleware.WithMux(mux, requestLogger)
 
 	// Legacy API routes (Node.js compat).
-	mux.HandleFunc("GET /api/releases/{rest...}", srv.handleReleasesAPI)
+	mmux.HandleFunc("GET /api/releases/{rest...}", srv.handleReleasesAPI)
 
 	// New API routes (v1).
-	mux.HandleFunc("GET /v1/releases/{rest...}", srv.handleV1Releases)
-	mux.HandleFunc("GET /v1/resolve/{rest...}", srv.handleV1Resolve)
+	mmux.HandleFunc("GET /v1/releases/{rest...}", srv.handleV1Releases)
+	mmux.HandleFunc("GET /v1/resolve/{rest...}", srv.handleV1Resolve)
 
 	// Full installer script (package-install.tpl.sh + install.sh).
-	mux.HandleFunc("GET /api/installers/{rest...}", srv.handleInstaller)
+	mmux.HandleFunc("GET /api/installers/{rest...}", srv.handleInstaller)
 
 	// Debug endpoint.
-	mux.HandleFunc("GET /api/debug", srv.handleDebug)
+	mmux.HandleFunc("GET /api/debug", srv.handleDebug)
 
-	// Health check.
+	// Health check (no logging — too noisy).
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
@@ -92,7 +95,7 @@ func main() {
 
 	// Bootstrap route: /{package} and /{package}@{version}
 	// Detects UA and returns rendered installer script.
-	mux.HandleFunc("GET /{pkgSpec}", srv.handleBootstrap)
+	mmux.HandleFunc("GET /{pkgSpec}", srv.handleBootstrap)
 
 	httpSrv := &http.Server{
 		Addr:         *addr,
@@ -119,6 +122,27 @@ func main() {
 	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	httpSrv.Shutdown(shutCtx)
+}
+
+// requestLogger is a middleware that logs each request with status and duration.
+func requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+		next.ServeHTTP(rw, r)
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, rw.code, time.Since(start))
+	})
+}
+
+// statusWriter wraps ResponseWriter to capture the HTTP status code.
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (sw *statusWriter) WriteHeader(code int) {
+	sw.code = code
+	sw.ResponseWriter.WriteHeader(code)
 }
 
 // server holds the shared state for all HTTP handlers.
