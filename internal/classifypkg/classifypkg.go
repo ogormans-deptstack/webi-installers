@@ -879,7 +879,7 @@ func normalizeGoArch(goarch string) string {
 		return "aarch64"
 	case "386":
 		return "x86"
-	case "arm":
+	case "arm", "armv6l":
 		return "armv6"
 	case "ppc64le":
 		return "ppc64le"
@@ -977,9 +977,9 @@ func classifyGPGDist(d *rawcache.Dir) ([]storage.Asset, error) {
 			Filename: fmt.Sprintf("GnuPG-%s.dmg", entry.Version),
 			Version:  entry.Version,
 			Channel:  "stable",
-			OS:       "darwin",
-			Arch:     "amd64",
-			Format:   ".dmg",
+			OS:       string(buildmeta.OSDarwin),
+			Arch:     string(buildmeta.ArchAMD64),
+			Format:   string(buildmeta.FormatDMG),
 			Download: entry.URL,
 		})
 	}

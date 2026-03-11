@@ -40,14 +40,6 @@ func Filename(name string) Result {
 	lower := strings.ToLower(name)
 	os := detectOS(lower)
 	arch := detectArch(lower)
-
-	// On Windows, bare "arm" (detected as ARMv6) almost certainly means
-	// ARM64. Windows never shipped ARMv6 binaries — "ARM" became the
-	// marketing label for ARM64 (Windows on ARM).
-	if os == buildmeta.OSWindows && arch == buildmeta.ArchARMv6 {
-		arch = buildmeta.ArchARM64
-	}
-
 	format := detectFormat(lower)
 
 	// .deb, .rpm, .snap are Linux-only package formats.
@@ -80,7 +72,7 @@ var osPatterns = []struct {
 }{
 	{buildmeta.OSDarwin, regexp.MustCompile(`(?i)(?:` + b + `(?:darwin|macos|macosx|osx|os-x|apple)` + bEnd + `|` + b + `mac` + bEnd + `)`)},
 	{buildmeta.OSLinux, regexp.MustCompile(`(?i)` + b + `linux` + bEnd)},
-	{buildmeta.OSWindows, regexp.MustCompile(`(?i)` + b + `(?:windows|win(?:32|64|dows)?)` + bEnd + `|\.exe(?:\.xz)?$|\.msi$`)},
+	{buildmeta.OSWindows, regexp.MustCompile(`(?i)` + b + `(?:windows|win(?:32|64|x64|dows)?)` + bEnd + `|\.exe(?:\.xz)?$|\.msi$`)},
 	{buildmeta.OSFreeBSD, regexp.MustCompile(`(?i)` + b + `freebsd` + bEnd)},
 	{buildmeta.OSOpenBSD, regexp.MustCompile(`(?i)` + b + `openbsd` + bEnd)},
 	{buildmeta.OSNetBSD, regexp.MustCompile(`(?i)` + b + `netbsd` + bEnd)},
@@ -118,10 +110,11 @@ var archPatterns = []struct {
 	// arm64 before armv7/armv6 — "aarch64" must not match as arm.
 	{buildmeta.ArchARM64, regexp.MustCompile(`(?i)(?:aarch64|arm64|armv8)`)},
 	{buildmeta.ArchARMv7, regexp.MustCompile(`(?i)(?:armv7l?|arm-?v7|arm7|arm32|armhf)`)},
-	{buildmeta.ArchARMv6, regexp.MustCompile(`(?i)(?:armv6l?|arm-?v6|aarch32|` + b + `arm` + bEnd + `)`)},
+	// armel and gnueabihf are ARMv6 soft/hard-float ABI names used in Debian and Rust triplets.
+	{buildmeta.ArchARMv6, regexp.MustCompile(`(?i)(?:armv6l?|arm-?v6|aarch32|armel|gnueabihf|` + b + `arm` + bEnd + `)`)},
 	{buildmeta.ArchARMv5, regexp.MustCompile(`(?i)(?:armv5)`)},
-	// ppc64le before ppc64.
-	{buildmeta.ArchPPC64LE, regexp.MustCompile(`(?i)ppc64le`)},
+	// ppc64le before ppc64. ppc64el is an alternative spelling used in Debian/Ubuntu.
+	{buildmeta.ArchPPC64LE, regexp.MustCompile(`(?i)(?:ppc64le|ppc64el)`)},
 	{buildmeta.ArchPPC64, regexp.MustCompile(`(?i)ppc64`)},
 	{buildmeta.ArchRISCV64, regexp.MustCompile(`(?i)riscv64`)},
 	{buildmeta.ArchS390X, regexp.MustCompile(`(?i)s390x`)},

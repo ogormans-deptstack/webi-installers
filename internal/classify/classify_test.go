@@ -151,12 +151,20 @@ func TestFilename(t *testing.T) {
 			format: buildmeta.FormatTarGz,
 		},
 
-		// Windows ARM: bare "arm" means ARM64, not ARMv6/v7
+		// Windows ARM: bare "arm" is armv6 (some tools ship genuine arm32 Windows builds).
+		// Explicit "arm64" is always aarch64 regardless of OS.
 		{
-			name:   "windows arm means arm64",
+			name:   "windows bare arm stays armv6",
 			input:  "tool-1.0.0-windows-arm.zip",
 			wantOS: buildmeta.OSWindows,
-			arch:   buildmeta.ArchARM64,
+			arch:   buildmeta.ArchARMv6,
+			format: buildmeta.FormatZip,
+		},
+		{
+			name:   "windows armv6 stays armv6",
+			input:  "tool-2.0.0-windows-armv6.zip",
+			wantOS: buildmeta.OSWindows,
+			arch:   buildmeta.ArchARMv6,
 			format: buildmeta.FormatZip,
 		},
 		{
@@ -165,6 +173,37 @@ func TestFilename(t *testing.T) {
 			wantOS: buildmeta.OSWindows,
 			arch:   buildmeta.ArchARM64,
 			format: buildmeta.FormatZip,
+		},
+
+		// armel and gnueabihf are ARMv6 ABI names
+		{
+			name:   "armel is armv6",
+			input:  "jq-linux-armel",
+			wantOS: buildmeta.OSLinux,
+			arch:   buildmeta.ArchARMv6,
+		},
+		{
+			name:   "gnueabihf is armv6",
+			input:  "tool-arm-unknown-linux-gnueabihf.tar.gz",
+			wantOS: buildmeta.OSLinux,
+			arch:   buildmeta.ArchARMv6,
+			format: buildmeta.FormatTarGz,
+		},
+
+		// winx64 is a Windows x86_64 naming used by MariaDB
+		{
+			name:   "winx64 is windows x86_64",
+			input:  "mariadb-11.4.5-winx64.zip",
+			wantOS: buildmeta.OSWindows,
+			arch:   buildmeta.ArchAMD64,
+			format: buildmeta.FormatZip,
+		},
+
+		// ppc64el is a Debian/Ubuntu alias for ppc64le
+		{
+			name:  "ppc64el is ppc64le",
+			input: "jq-linux-ppc64el",
+			arch:  buildmeta.ArchPPC64LE,
 		},
 
 		// amd64 micro-architecture levels

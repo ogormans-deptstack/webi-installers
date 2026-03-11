@@ -51,9 +51,8 @@ func (la LegacyAsset) ToAsset() Asset {
 }
 
 // toLegacy converts an Asset to the LegacyAsset wire format.
-// It applies per-package field translations for Node.js compatibility.
-func (a Asset) toLegacy(pkg string) LegacyAsset {
-	a = legacyFieldBackport(pkg, a)
+// Callers must have already applied legacyFieldBackport before calling this.
+func (a Asset) toLegacy() LegacyAsset {
 	return LegacyAsset{
 		Name:     a.Filename,
 		Version:  a.Version,
@@ -72,12 +71,18 @@ func (a Asset) toLegacy(pkg string) LegacyAsset {
 // values the legacy Node.js resolver expects. This is called at export time
 // only — the canonical values are preserved in Go-native storage (pgstore).
 //
-// Rules are package-specific because they replicate per-package overrides
-// that production's releases.js files apply:
+// Global rules (all packages):
+//   - solaris/illumos → sunos  (Node.js only knows "sunos")
 //
+// Package-specific rules replicate per-package overrides in production's releases.js:
 //   - go:    armv6 → arm  (Go dist API uses bare "arm"; prod keeps it as-is)
 //   - ffmpeg: Windows .gz → .exe  (prod releases.js: rel.ext = 'exe')
 func legacyFieldBackport(pkg string, a Asset) Asset {
+	// Global OS normalization: Node.js uses "sunos" for both Solaris and Illumos.
+	if a.OS == "solaris" || a.OS == "illumos" {
+		a.OS = "sunos"
+	}
+
 	switch pkg {
 	case "go":
 		if a.Arch == "armv6" {
@@ -149,7 +154,19 @@ func ExportLegacy(pkg string, pd PackageData) (LegacyCache, LegacyDropStats) {
 			stats.Formats++
 			continue
 		}
-		releases = append(releases, a.toLegacy(pkg))
+		// universal2 (macOS fat binary) → expand to aarch64 + x86_64.
+		// Node.js doesn't know "universal2"; emitting both arches ensures
+		// the binary is found for both Apple Silicon and Intel Mac clients.
+		if a.Arch == "universal2" {
+			arm := a
+			arm.Arch = "aarch64"
+			releases = append(releases, arm.toLegacy())
+			intel := a
+			intel.Arch = "x86_64"
+			releases = append(releases, intel.toLegacy())
+			continue
+		}
+		releases = append(releases, a.toLegacy())
 	}
 	if releases == nil {
 		releases = []LegacyAsset{}
