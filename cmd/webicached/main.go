@@ -6,12 +6,15 @@
 // It reads releases.conf files to discover packages, fetches from the
 // configured source, classifies assets, and writes to fsstore.
 //
+// Default mode: classify all from existing rawcache on startup, then
+// fetch+refresh one package per tick (round-robin, 15m default).
+//
 // Usage:
 //
-//	go run ./cmd/webicached
-//	go run ./cmd/webicached -conf . -cache ./_cache -raw ./_cache/raw bat goreleaser
-//	go run ./cmd/webicached -once          # single pass, no periodic refresh
-//	go run ./cmd/webicached -once -no-fetch # classify from existing raw data only
+//	go run ./cmd/webicached                # default: round-robin, one per tick
+//	go run ./cmd/webicached -eager         # fetch all packages on startup
+//	go run ./cmd/webicached -once -no-fetch # classify from rawcache and exit
+//	go run ./cmd/webicached bat goreleaser # only these packages
 package main
 
 import (
@@ -49,13 +52,31 @@ import (
 
 // WebiCache holds the configuration for the cache daemon.
 type WebiCache struct {
-	ConfDir string          // root directory with {pkg}/releases.conf files
-	Store   *fsstore.Store  // classified asset storage
-	RawDir  string          // raw upstream response cache
-	Client  *http.Client    // HTTP client for upstream calls
-	Auth    *githubish.Auth // GitHub API auth (optional)
-	Shallow bool            // fetch only the first page of releases
-	NoFetch bool            // skip fetching, classify from existing raw data only
+	ConfDir   string          // root directory with {pkg}/releases.conf files
+	Store     *fsstore.Store  // classified asset storage
+	RawDir    string          // raw upstream response cache
+	Client    *http.Client    // HTTP client for upstream calls
+	Auth      *githubish.Auth // GitHub API auth (optional)
+	Shallow   bool            // fetch only the first page of releases
+	NoFetch   bool            // skip fetching, classify from existing raw data only
+	PageDelay time.Duration   // delay between paginated API requests
+}
+
+// delayTransport wraps an http.RoundTripper to add a delay between requests.
+type delayTransport struct {
+	base  http.RoundTripper
+	delay time.Duration
+	last  time.Time
+}
+
+func (t *delayTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !t.last.IsZero() && t.delay > 0 {
+		if wait := t.delay - time.Since(t.last); wait > 0 {
+			time.Sleep(wait)
+		}
+	}
+	t.last = time.Now()
+	return t.base.RoundTrip(req)
 }
 
 func main() {
@@ -66,7 +87,9 @@ func main() {
 	once := flag.Bool("once", false, "run once then exit (no periodic refresh)")
 	noFetch := flag.Bool("no-fetch", false, "skip fetching, classify from existing raw data only")
 	shallow := flag.Bool("shallow", false, "fetch only the first page of releases (latest)")
+	eager := flag.Bool("eager", false, "fetch all packages on startup (default: one per tick)")
 	interval := flag.Duration("interval", 15*time.Minute, "refresh interval")
+	pageDelay := flag.Duration("page-delay", 2*time.Second, "delay between paginated API requests")
 	flag.Parse()
 
 	store, err := fsstore.New(*cacheDir)
@@ -79,28 +102,89 @@ func main() {
 		auth = &githubish.Auth{Token: *token}
 	}
 
+	client := &http.Client{Timeout: 30 * time.Second}
+	if *pageDelay > 0 {
+		client.Transport = &delayTransport{
+			base:  http.DefaultTransport,
+			delay: *pageDelay,
+		}
+	}
+
 	wc := &WebiCache{
-		ConfDir: *confDir,
-		Store:   store,
-		RawDir:  *rawDir,
-		Client:  &http.Client{Timeout: 30 * time.Second},
-		Auth:    auth,
-		Shallow: *shallow,
-		NoFetch: *noFetch,
+		ConfDir:   *confDir,
+		Store:     store,
+		RawDir:    *rawDir,
+		Client:    client,
+		Auth:      auth,
+		Shallow:   *shallow,
+		NoFetch:   *noFetch,
+		PageDelay: *pageDelay,
 	}
 
 	filterPkgs := flag.Args()
 
-	wc.Run(filterPkgs)
-	if *once {
+	if *eager {
+		// Eager mode: fetch+classify all packages upfront.
+		wc.Run(filterPkgs)
+		if *once {
+			return
+		}
+	} else if *once {
+		// Once mode without eager: classify all from existing rawcache.
+		wc.Run(filterPkgs)
 		return
+	} else {
+		// Default: classify all from existing rawcache first, then
+		// fetch+refresh one package per tick.
+		saved := wc.NoFetch
+		wc.NoFetch = true
+		wc.Run(filterPkgs)
+		wc.NoFetch = saved
+	}
+
+	// Discover the full package list for round-robin.
+	packages, err := discover(wc.ConfDir)
+	if err != nil {
+		log.Fatalf("discover: %v", err)
+	}
+	if len(filterPkgs) > 0 {
+		nameSet := make(map[string]bool, len(filterPkgs))
+		for _, a := range filterPkgs {
+			nameSet[a] = true
+		}
+		var filtered []pkgConf
+		for _, p := range packages {
+			if nameSet[p.name] {
+				filtered = append(filtered, p)
+			}
+		}
+		packages = filtered
+	}
+
+	// Filter out aliases — only real packages get round-robin refreshed.
+	var real []pkgConf
+	for _, pkg := range packages {
+		if pkg.conf.AliasOf == "" {
+			real = append(real, pkg)
+		}
 	}
 
 	ticker := time.NewTicker(*interval)
 	defer ticker.Stop()
-	log.Printf("running every %s (ctrl-c to stop)", *interval)
+	log.Printf("running every %s, %d packages round-robin (ctrl-c to stop)", *interval, len(real))
+
+	idx := 0
 	for range ticker.C {
-		wc.Run(filterPkgs)
+		if len(real) == 0 {
+			continue
+		}
+		pkg := real[idx%len(real)]
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		if err := wc.refreshPackage(ctx, pkg); err != nil {
+			log.Printf("  ERROR %s: %v", pkg.name, err)
+		}
+		cancel()
+		idx++
 	}
 }
 
@@ -129,29 +213,26 @@ func (wc *WebiCache) Run(filterPkgs []string) {
 		packages = filtered
 	}
 
-	log.Printf("refreshing %d packages", len(packages))
-	runStart := time.Now()
-
-	var aliases []pkgConf
+	// Skip aliases and symlinked dirs — the legacy cache doesn't
+	// generate entries for them. They're resolved at request time.
+	var real []pkgConf
 	for _, pkg := range packages {
 		if pkg.conf.AliasOf != "" {
-			aliases = append(aliases, pkg)
 			continue
 		}
+		real = append(real, pkg)
+	}
 
+	log.Printf("refreshing %d packages", len(real))
+	runStart := time.Now()
+
+	for _, pkg := range real {
 		if err := wc.refreshPackage(ctx, pkg); err != nil {
 			log.Printf("  ERROR %s: %v", pkg.name, err)
 		}
 	}
 
-	// Create symlinks for aliases after all targets are written.
-	for _, pkg := range aliases {
-		if err := wc.Store.LinkAlias(pkg.name, pkg.conf.AliasOf); err != nil {
-			log.Printf("  ERROR alias %s → %s: %v", pkg.name, pkg.conf.AliasOf, err)
-		}
-	}
-
-	log.Printf("refreshed %d packages in %s", len(packages), time.Since(runStart))
+	log.Printf("refreshed %d packages in %s", len(real), time.Since(runStart))
 }
 
 type pkgConf struct {
