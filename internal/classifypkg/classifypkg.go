@@ -77,6 +77,7 @@ func Package(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]storage.A
 	TagVariants(pkg, assets)
 	NormalizeVersions(pkg, assets)
 	assets = ApplyConfig(assets, conf)
+	assets = appendLegacy(pkg, assets)
 	return assets, nil
 }
 
@@ -158,6 +159,16 @@ func TagVariants(pkg string, assets []storage.Asset) {
 	case "xcaddy":
 		xcaddy.TagVariants(assets)
 	}
+}
+
+// appendLegacy adds hardcoded legacy releases for packages that had
+// releases from sources that no longer exist (e.g. EnterpriseDB binaries).
+func appendLegacy(pkg string, assets []storage.Asset) []storage.Asset {
+	switch pkg {
+	case "postgres":
+		assets = append(assets, postgres.LegacyReleases()...)
+	}
+	return assets
 }
 
 // ApplyConfig applies asset_filter, exclude, and version prefix stripping
