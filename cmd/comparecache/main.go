@@ -423,26 +423,30 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 			}
 
 			// Compare classification fields.
+			// Use equivalence checks for os/arch/ext so naming
+			// convention differences don't mask real classification bugs.
 			for _, cmp := range []struct {
-				field    string
-				liveVal  string
-				goVal    string
+				field string
+				live  string
+				go_   string
+				equiv bool
 			}{
-				{"os", lr.OS, r.OS},
-				{"arch", lr.Arch, r.Arch},
-				{"libc", lr.Libc, r.Libc},
-				{"ext", lr.Ext, r.Ext},
-				{"channel", lr.Channel, r.Channel},
+				{"os", lr.OS, r.OS, equivOS(lr.OS, r.OS)},
+				{"arch", lr.Arch, r.Arch, equivArch(lr.Arch, r.Arch)},
+				{"libc", lr.Libc, r.Libc, lr.Libc == r.Libc},
+				{"ext", lr.Ext, r.Ext, equivExt(lr.Ext, r.Ext)},
+				{"channel", lr.Channel, r.Channel, lr.Channel == r.Channel},
 			} {
-				if cmp.liveVal != cmp.goVal {
-					d.FieldDiffs = append(d.FieldDiffs, fieldDiff{
-						Filename: name,
-						Field:    cmp.field,
-						Live:     cmp.liveVal,
-						Go:       cmp.goVal,
-						BothSet:  cmp.liveVal != "" && cmp.goVal != "",
-					})
+				if cmp.equiv {
+					continue
 				}
+				d.FieldDiffs = append(d.FieldDiffs, fieldDiff{
+					Filename: name,
+					Field:    cmp.field,
+					Live:     cmp.live,
+					Go:       cmp.go_,
+					BothSet:  cmp.live != "" && cmp.go_ != "",
+				})
 			}
 		}
 		sort.Slice(d.FieldDiffs, func(i, j int) bool {
@@ -454,6 +458,60 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 	}
 
 	return d
+}
+
+// equivOS returns true if two OS values are equivalent across naming conventions.
+func equivOS(a, b string) bool {
+	return a == b || canonicalOS(a) == canonicalOS(b)
+}
+
+func canonicalOS(s string) string {
+	switch strings.ToLower(s) {
+	case "darwin", "macos", "mac", "osx":
+		return "darwin"
+	case "win", "windows":
+		return "windows"
+	default:
+		return strings.ToLower(s)
+	}
+}
+
+// equivArch returns true if two arch values are equivalent.
+func equivArch(a, b string) bool {
+	return a == b || canonicalArch(a) == canonicalArch(b)
+}
+
+func canonicalArch(s string) string {
+	switch strings.ToLower(s) {
+	case "x86_64", "amd64", "x64":
+		return "x86_64"
+	case "aarch64", "arm64":
+		return "aarch64"
+	case "armv7", "armv7l":
+		return "armv7"
+	case "armv6", "armv6l":
+		return "armv6"
+	case "x86", "i386", "i686", "386":
+		return "x86"
+	default:
+		return strings.ToLower(s)
+	}
+}
+
+// equivExt returns true if two extension values are equivalent.
+func equivExt(a, b string) bool {
+	// Normalize: strip leading dot, handle common aliases.
+	return a == b || canonicalExt(a) == canonicalExt(b)
+}
+
+func canonicalExt(s string) string {
+	s = strings.TrimPrefix(s, ".")
+	switch s {
+	case "tgz":
+		return "tar.gz"
+	default:
+		return s
+	}
 }
 
 func categorize(d *packageDiff) {
