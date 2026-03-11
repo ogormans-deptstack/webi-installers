@@ -10,9 +10,7 @@ import (
 
 func TestSimpleGitHub(t *testing.T) {
 	c := confFromString(t, `
-source = github
-owner = sharkdp
-repo = bat
+github_repo = sharkdp/bat
 `)
 	assertEqual(t, "Source", c.Source, "github")
 	assertEqual(t, "Owner", c.Owner, "sharkdp")
@@ -29,9 +27,7 @@ repo = bat
 
 func TestVersionPrefixes(t *testing.T) {
 	c := confFromString(t, `
-source = github
-owner = jqlang
-repo = jq
+github_repo = jqlang/jq
 version_prefixes = jq- cli-
 `)
 	if len(c.VersionPrefixes) != 2 {
@@ -43,9 +39,7 @@ version_prefixes = jq- cli-
 
 func TestExclude(t *testing.T) {
 	c := confFromString(t, `
-source = github
-owner = gohugoio
-repo = hugo
+github_repo = gohugoio/hugo
 exclude = _extended_ Linux-64bit
 `)
 	if len(c.Exclude) != 2 {
@@ -57,9 +51,7 @@ exclude = _extended_ Linux-64bit
 
 func TestMonorepoTagPrefix(t *testing.T) {
 	c := confFromString(t, `
-source = github
-owner = therootcompany
-repo = golib
+github_repo = therootcompany/golib
 tag_prefix = tools/monorel/
 `)
 	assertEqual(t, "TagPrefix", c.TagPrefix, "tools/monorel/")
@@ -76,10 +68,8 @@ url = https://nodejs.org/download/release
 
 func TestGiteaBaseURL(t *testing.T) {
 	c := confFromString(t, `
-source = gitea
+gitea_repo = xorm/xorm
 base_url = https://gitea.com
-owner = xorm
-repo = xorm
 `)
 	assertEqual(t, "Source", c.Source, "gitea")
 	assertEqual(t, "BaseURL", c.BaseURL, "https://gitea.com")
@@ -89,20 +79,19 @@ repo = xorm
 func TestBlanksAndComments(t *testing.T) {
 	c := confFromString(t, `
 # Hugo config
-source = github
+github_repo = foo/bar
 
-# owner line
-owner = foo
+# exclude line
+exclude = extended
 `)
 	assertEqual(t, "Source", c.Source, "github")
 	assertEqual(t, "Owner", c.Owner, "foo")
+	assertEqual(t, "Repo", c.Repo, "bar")
 }
 
 func TestExtraKeys(t *testing.T) {
 	c := confFromString(t, `
-source = github
-owner = foo
-repo = bar
+github_repo = foo/bar
 custom_thing = hello
 `)
 	if c.Extra == nil || c.Extra["custom_thing"] != "hello" {
@@ -112,9 +101,7 @@ custom_thing = hello
 
 func TestAssetExcludeAlias(t *testing.T) {
 	c := confFromString(t, `
-source = github
-owner = gohugoio
-repo = hugo
+github_repo = gohugoio/hugo
 asset_exclude = extended
 `)
 	if len(c.Exclude) != 1 {
@@ -125,9 +112,7 @@ asset_exclude = extended
 
 func TestVariants(t *testing.T) {
 	c := confFromString(t, `
-source = github
-owner = jmorganca
-repo = ollama
+github_repo = jmorganca/ollama
 variants = rocm jetpack5 jetpack6
 `)
 	if len(c.Variants) != 3 {
@@ -139,7 +124,7 @@ variants = rocm jetpack5 jetpack6
 }
 
 func TestEmptyExclude(t *testing.T) {
-	c := confFromString(t, "source = github\n")
+	c := confFromString(t, "github_repo = foo/bar\n")
 	if c.Exclude != nil {
 		t.Errorf("Exclude = %v, want nil", c.Exclude)
 	}

@@ -54,3 +54,19 @@ entry. The resolver's version-descending + platform-first-then-any order means
 git assets for old versions are never selected when newer binaries exist.
 
 **No fix needed** in the Go resolver or classifier. The behavior is correct.
+
+## Re: Issue 4 — darwin-universal (Hugo)
+
+Already handled correctly on the Go side:
+
+- `classify.Filename()` detects `universal`, `universal2`, and `fat` via regex
+  (line 111 of `classify.go`) and maps them to `buildmeta.ArchUniversal2`.
+- `buildmeta.CompatArches()` includes `universal2` in the fallback chain for
+  both ARM64 and AMD64 on Darwin:
+  - `ArchARM64 → [arm64, universal2, amd64]`
+  - `ArchAMD64 → [amd64, universal2, x86]`
+- Hugo's Go cache correctly contains `"arch": "universal2"` entries for darwin.
+- comparecache shows Hugo matches between Go and LIVE caches (no diffs).
+
+This is a Node.js-side issue only — the `host-targets.js` WATERFALL needs
+`universal2` in the arch fallback chain, similar to what `CompatArches` does.
