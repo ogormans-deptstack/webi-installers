@@ -35,15 +35,6 @@ github_releases = https://github.com/sharkdp/bat
 	assertEqual(t, "Repo", c.Repo, "bat")
 }
 
-func TestGitHubRepoBackCompat(t *testing.T) {
-	c := confFromString(t, `
-github_repo = sharkdp/bat
-`)
-	assertEqual(t, "Source", c.Source, "github")
-	assertEqual(t, "Owner", c.Owner, "sharkdp")
-	assertEqual(t, "Repo", c.Repo, "bat")
-}
-
 func TestGitHubSources(t *testing.T) {
 	c := confFromString(t, `
 github_sources = BeyondCodeBootcamp/aliasman
@@ -126,16 +117,6 @@ base_url = https://git.rootprojects.org
 	assertEqual(t, "BaseURL", c.BaseURL, "https://git.rootprojects.org")
 	assertEqual(t, "Owner", c.Owner, "root")
 	assertEqual(t, "Repo", c.Repo, "pathman")
-}
-
-func TestGiteaRepoBackCompat(t *testing.T) {
-	c := confFromString(t, `
-gitea_repo = xorm/xorm
-base_url = https://gitea.com
-`)
-	assertEqual(t, "Source", c.Source, "gitea")
-	assertEqual(t, "BaseURL", c.BaseURL, "https://gitea.com")
-	assertEqual(t, "Owner", c.Owner, "xorm")
 }
 
 func TestGitLabReleases(t *testing.T) {

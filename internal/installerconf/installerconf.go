@@ -6,45 +6,28 @@
 //
 // The source type is inferred from the primary key:
 //
-// GitHub releases (binary assets):
+// GitHub binary releases:
 //
 //	github_releases = sharkdp/bat
 //	github_releases = https://github.com/sharkdp/bat
 //
-// GitHub sources (tarball/zipball/git for source-installable packages):
+// GitHub source archives (for source-installable packages):
 //
 //	github_sources = BeyondCodeBootcamp/aliasman
 //	git_url = https://github.com/BeyondCodeBootcamp/aliasman.git
 //
-// With version prefix stripping (jq tags are "jq-1.7.1"):
+// Gitea binary releases (self-hosted, requires full URL or base_url):
 //
-//	github_releases = jqlang/jq
-//	version_prefixes = jq-
+//	gitea_releases = https://git.rootprojects.org/root/pathman
 //
-// With filename exclusions and variant documentation:
-//
-//	github_releases = gohugoio/hugo
-//	exclude = _extended_ Linux-64bit
-//	variants = extended extended_withdeploy
-//
-// Monorepo with tag prefix:
-//
-//	github_releases = therootcompany/golib
-//	tag_prefix = tools/monorel/
-//
-// Git tag sources (vim plugins, etc.):
-//
-//	git_url = https://github.com/tpope/vim-commentary.git
-//
-// Gitea releases:
-//
-//	gitea_releases = root/pathman
-//	base_url = https://git.rootprojects.org
-//
-// GitLab releases:
+// GitLab binary releases (defaults to gitlab.com):
 //
 //	gitlab_releases = owner/repo
-//	base_url = https://gitlab.com
+//	gitlab_releases = https://gitlab.example.com/owner/repo
+//
+// Git tag enumeration (vim plugins, etc.):
+//
+//	git_url = https://github.com/tpope/vim-commentary.git
 //
 // HashiCorp releases:
 //
@@ -179,28 +162,16 @@ func Read(path string) (*Conf, error) {
 	case raw["github_releases"] != "":
 		c.Source = "github"
 		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["github_releases"], "https://github.com")
-	case raw["github_repo"] != "":
-		// Back-compat alias.
-		c.Source = "github"
-		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["github_repo"], "https://github.com")
 
 	// GitHub source tarballs.
 	case raw["github_sources"] != "":
 		c.Source = "githubsource"
 		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["github_sources"], "https://github.com")
-	case raw["github_source"] != "":
-		// Back-compat alias.
-		c.Source = "githubsource"
-		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["github_source"], "https://github.com")
 
 	// Gitea binary releases (self-hosted only — requires full URL or base_url).
 	case raw["gitea_releases"] != "":
 		c.Source = "gitea"
 		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["gitea_releases"], raw["base_url"])
-	case raw["gitea_repo"] != "":
-		// Back-compat alias.
-		c.Source = "gitea"
-		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["gitea_repo"], raw["base_url"])
 
 	// Gitea source tarballs (self-hosted only).
 	case raw["gitea_sources"] != "":
@@ -264,11 +235,8 @@ func Read(path string) (*Conf, error) {
 	known := map[string]bool{
 		"source":             true,
 		"github_releases":    true,
-		"github_repo":        true,
 		"github_sources":     true,
-		"github_source":      true,
 		"gitea_releases":     true,
-		"gitea_repo":         true,
 		"gitea_sources":      true,
 		"gitlab_releases":    true,
 		"gitlab_sources":     true,
