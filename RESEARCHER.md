@@ -79,15 +79,26 @@ for Windows assets (line 26). The `.gz` file contains a gzipped bare executable.
 There's no generic reclassification — it's per-package override logic in releases.js.
 Your Go rewrite would need equivalent logic in `ffmpeg/releases.conf` or the classifier.
 
-**terraform `alpha` channel:** If Go correctly detects `alpha` and prod misses it,
-that's a production bug (or normalize.js limitation). The channel regex in normalize.js
-is `([+.\-_])(beta|rc|alpha|dev)(\d+)` — it should match alpha. Worth checking the
-exact terraform filename to see why prod misses it.
+**terraform `alpha` channel:** Production bug confirmed. `terraform/releases.js` uses
+`alphaRe = /\d-alpha\d/` — requires a digit IMMEDIATELY after `alpha` (e.g., `alpha1`
+or `alpha20210811`). If the version has a dash between alpha and the number
+(`1.0.0-alpha-20210811`), the regex fails. Those versions get `channel: 'stable'`.
+Go correctly identifies these as `alpha`. **Go is right, prod is wrong.** Safe to keep.
 
-**postgres `tar` vs `tar.gz`:** If production says `tar` for legacy EDB assets,
-that's likely a normalize.js quirk. The build-classifier uses `filenameToPackageType()`
-which strips compression layers (`.gz` → nothing), leaving `.tar`. Both `.tar` and
-`.tar.gz` would match format preference for `tar`, so functionally equivalent.
+**postgres `tar` vs `tar.gz`:** Root cause confirmed. `postgres/releases.js` has
+hardcoded legacy `originalReleases` entries with `ext: 'tar'` pre-set (lines 22, 33).
+The actual filenames ARE `.tar.gz` (e.g., `postgresql-10.12-1-linux-x64-binaries.tar.gz`).
+Since normalize.js only runs extension detection `if (!rel.ext)`, the wrong pre-set
+value is never corrected. Go correctly derives `.tar.gz` from the filename — Go is right.
+No functional impact: `tar` and `.tar.gz` are treated the same in format selection
+(both use the `tar` branch of getSortedFormats). Safe to keep Go's behavior.
+
+**iterm2 `beta` channel:** Root cause confirmed. `iterm2/releases.js` line 48 sets
+channel based on `/\/stable\//.test(link)`. Old iTerm2 URLs (before they added the
+`/stable/` and `/beta/` subdirectories) don't contain `/stable/` → classified `beta`.
+Production's stale disk cache from before this fix keeps those as `beta`. Go fetches
+fresh data and correctly reads `channel: 'stable'` from the URL pattern (if the URL
+has changed). **Go is right, prod cache is stale.** Safe to keep.
 
 ## Latest Findings (2026-03-11)
 
