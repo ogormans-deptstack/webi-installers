@@ -55,21 +55,23 @@ The Go cache filters releases more aggressively than the old Node normalize.js:
 | `gnu`  | Requires glibc at runtime. Crashes on musl-only systems (Alpine). |
 | `libc` | Host-reported UA value meaning "I have standard C library" (typically glibc). Not used in release metadata. |
 
-### Known Issues Needing Resolution
+### Resolved Issues
 
-- **WATERFALL libc vs gnu**: The Go cache correctly uses `libc='gnu'` for
-  glibc-linked Linux binaries (Rust projects like bat, rg; also node). The
-  build-classifier WATERFALL maps `libc` => `['none', 'libc']` but never tries
-  `gnu`, so Linux glibc hosts can't match these packages. Fix needed in
-  `host-targets.js`: `libc: ['none', 'gnu', 'libc']` (`none` first = prefer
-  static, `gnu` second = glibc host can run gnu-linked, `libc` last = fallback).
-  See QUESTIONS.md in the Go agent worktree.
-- **Go cache `.git` source URLs (regression)**: The Go cache includes `.git`
-  source repo URLs as release assets. These get classified as
-  `ANYOS`/`ANYARCH` and match before platform-specific binaries because
-  the triplet enumeration tries ANYOS first. Production doesn't have this
-  issue — the old `releases.js` fetchers never included `.git` URLs. Fix:
-  exclude `.git` URLs from Go cache output.
+- **WATERFALL libc vs gnu+musl** (fixed in `builds-cacher.js`): Glibc hosts
+  now try `['none', 'gnu', 'musl', 'libc']`. `gnu` for glibc-linked builds,
+  `musl` as fallback for static musl builds (e.g. rg v15+ dropped gnu x86_64).
+- **ANYOS/.git priority** (fixed in `builds-cacher.js`): Triplet enumeration
+  now puts specific OS before ANYOS and specific arch before ANYARCH.
+- **Version-first iteration** (fixed in `builds-cacher.js`): `findMatchingPackages`
+  now iterates versions newest-first then triplets, matching the Go resolver.
+  Prevents selecting ancient versions from low-priority triplets.
+
+### Remaining Issues
+
+- **hugo darwin-universal**: Build classifier rejects `darwin-universal` as
+  `x86_64 != universal2`. Hugo v0.100+ only publishes universal macOS binaries,
+  so darwin-aarch64 has no recent versions. Classifier needs to map universal
+  binaries for both aarch64 and x86_64 hosts.
 
 ### Known Pre-existing Issues
 
