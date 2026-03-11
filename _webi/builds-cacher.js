@@ -163,19 +163,6 @@ BuildsCacher.create = function ({ ALL_TERMS, installers, caches }) {
     let entries = await Fs.readdir(installersDir, { withFileTypes: true });
     for (let entry of entries) {
       let meta = await bc.getProjectTypeByEntry(entry);
-      if (meta.type === 'not_found') {
-        let err = meta.detail;
-        console.error('');
-        console.error('PROBLEM');
-        console.error(`    ${err.message}`);
-        console.error('');
-        console.error('SOLUTION');
-        console.error('    npm clean-install');
-        console.error('');
-        throw new Error(
-          '[SANITY FAIL] should never have missing modules in prod',
-        );
-      }
       dirs[meta.type][entry.name] = meta.detail;
     }
 
@@ -244,19 +231,19 @@ BuildsCacher.create = function ({ ALL_TERMS, installers, caches }) {
       return { type: 'alias', detail: link };
     }
 
-    let releasesPath = Path.join(path, 'releases.js');
-    try {
-      void require(releasesPath);
-    } catch (err) {
-      if (err.code !== 'MODULE_NOT_FOUND') {
-        return { type: 'errors', detail: err };
-      }
-
-      if (err.message.includes(`Cannot find module '${releasesPath}'`)) {
-        return { type: 'selfhosted', detail: true };
-      }
-
-      return { type: 'not_found', detail: err };
+    let date = new Date();
+    let yearMonth = date.toISOString().slice(0, 7);
+    let cacheFile = `${cacheDir}/${yearMonth}/${entry.name}.json`;
+    let hasCacheFile = await Fs.access(cacheFile).then(
+      function () {
+        return true;
+      },
+      function () {
+        return false;
+      },
+    );
+    if (!hasCacheFile) {
+      return { type: 'selfhosted', detail: true };
     }
 
     return { type: 'valid', detail: true };
