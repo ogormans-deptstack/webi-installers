@@ -270,9 +270,11 @@ func enumerateTriplets(osStr, archStr, libcStr string) []platformTriple {
 		// No preference: try all common options.
 		switch osStr {
 		case "linux":
-			libcs = []string{"gnu", "musl", "none", ""}
+			// none first (static, no deps), then gnu, musl, empty.
+			libcs = []string{"none", "gnu", "musl", ""}
 		case "windows":
-			libcs = []string{"msvc", "none", ""}
+			// none first (no deps), msvc last (needs vcredist).
+			libcs = []string{"none", "msvc", ""}
 		default:
 			libcs = []string{"none", ""}
 		}
