@@ -296,6 +296,151 @@ async function main() {
   if (failures > 0 || errors > 0) {
     process.exit(1);
   }
+
+  // Cache value validation: the classifier re-parses filenames and rejects
+  // entries where the cache os/arch doesn't match. These checks prevent
+  // regressions where someone "normalizes" cache values in a way that
+  // breaks the classifier.
+  console.log('');
+  console.log('=== Cache Value Validation ===');
+  console.log('');
+  let cacheFailures = await validateCacheValues();
+  if (cacheFailures > 0) {
+    process.exit(1);
+  }
+}
+
+// Verify that cache os/arch values match what the Node classifier expects
+// to extract from the download filename. The classifier is a submodule and
+// is NOT being modified — the cache must emit values it already recognizes.
+//
+// Known bug (LIVE_cache): the Go legacy export previously translated
+// solaris/illumos → sunos in the cache, but the filenames still say
+// solaris/illumos. The classifier detects the filename value and rejects
+// the entry when it doesn't match. Same issue with universal2 arch.
+//
+// Rule: cache os/arch must match the filename, not some "canonical" form.
+
+// Cache os/arch values must match what the Node classifier extracts from the
+// download filename. The classifier already recognizes solaris, illumos, sunos,
+// armhf, armel, etc. — these are not new values. The only value the classifier
+// does NOT recognize is "universal2" — use "x86_64" instead.
+//
+// matchField: which field to check in the release entry ('name' or 'download')
+let CACHE_CHECKS = [
+  // The classifier knows "solaris" as an OS. Filenames/URLs say "solaris".
+  // Do NOT translate to "sunos" — that creates a mismatch and drops the entry.
+  {
+    label: 'terraform solaris entries have os=solaris (not sunos)',
+    pkg: 'terraform',
+    matchField: 'download',
+    filenameMatch: /solaris/,
+    field: 'os',
+    expect: 'solaris',
+  },
+  {
+    label: 'syncthing solaris entries have os=solaris (not sunos)',
+    pkg: 'syncthing',
+    matchField: 'download',
+    filenameMatch: /solaris/,
+    field: 'os',
+    expect: 'solaris',
+  },
+  // The classifier knows "illumos" as an OS. Don't translate to sunos.
+  {
+    label: 'syncthing illumos entries have os=illumos (not sunos)',
+    pkg: 'syncthing',
+    matchField: 'download',
+    filenameMatch: /illumos/,
+    field: 'os',
+    expect: 'illumos',
+  },
+  // node.js uses "sunos" in filenames — cache must say "sunos" (already correct)
+  {
+    label: 'node sunos entries have os=sunos',
+    pkg: 'node',
+    matchField: 'name',
+    filenameMatch: /sunos/,
+    field: 'os',
+    expect: 'sunos',
+  },
+  // The classifier maps "universal" in filenames → x86_64. The classifier does
+  // NOT recognize "universal2". Cache must say arch="x86_64" for these entries.
+  // aarch64 users get them via the darwin WATERFALL (aarch64 → x86_64 fallback).
+  {
+    label: 'cmake universal entries have arch=x86_64 (not universal2)',
+    pkg: 'cmake',
+    matchField: 'download',
+    filenameMatch: /universal/,
+    field: 'arch',
+    expect: 'x86_64',
+  },
+  {
+    label: 'hugo universal entries have arch=x86_64 (not universal2)',
+    pkg: 'hugo',
+    matchField: 'download',
+    filenameMatch: /universal/,
+    field: 'arch',
+    expect: 'x86_64',
+  },
+];
+
+async function validateCacheValues() {
+  let Path = require('path');
+  let Fs = require('fs');
+
+  let cacheDir = Path.join(__dirname, '..', '_cache');
+  let months = Fs.readdirSync(cacheDir)
+    .filter(function (d) { return /^\d{4}-\d{2}$/.test(d); })
+    .sort()
+    .reverse();
+  if (months.length === 0) {
+    console.log('  SKIP: no cache directories found');
+    return 0;
+  }
+  let latestMonth = months[0];
+  let cachePath = Path.join(cacheDir, latestMonth);
+
+  let failures = 0;
+
+  for (let check of CACHE_CHECKS) {
+    let filePath = Path.join(cachePath, `${check.pkg}.json`);
+    if (!Fs.existsSync(filePath)) {
+      console.log(`  SKIP ${check.label}: no cache file`);
+      continue;
+    }
+
+    let data = JSON.parse(Fs.readFileSync(filePath, 'utf8'));
+    let matchField = check.matchField || 'name';
+    let matched = data.releases.filter(function (r) {
+      return check.filenameMatch.test(r[matchField]);
+    });
+
+    if (matched.length === 0) {
+      console.log(`  SKIP ${check.label}: no matching filenames`);
+      continue;
+    }
+
+    let wrong = matched.filter(function (r) {
+      return r[check.field] !== check.expect;
+    });
+
+    if (wrong.length > 0) {
+      let sample = wrong[0];
+      console.log(
+        `  FAIL ${check.label}: ${wrong.length}/${matched.length} entries have` +
+        ` ${check.field}="${sample[check.field]}" (want "${check.expect}")` +
+        ` e.g. ${sample.name}`,
+      );
+      failures++;
+    } else {
+      console.log(`  PASS ${check.label}: ${matched.length} entries OK`);
+    }
+  }
+
+  console.log('');
+  console.log(`=== Cache Validation: ${CACHE_CHECKS.length - failures} passed, ${failures} failed ===`);
+  return failures;
 }
 
 main().catch(function (err) {
