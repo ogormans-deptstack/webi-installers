@@ -31,16 +31,29 @@ import (
 )
 
 type cacheEntry struct {
-	Releases []struct {
-		Name      string `json:"name"`
-		Filename  string `json:"_filename"` // Node.js uses _filename for some sources
-		Version   string `json:"version"`
-		Download  string `json:"download"`
-		Channel   string `json:"channel"`
-		OS        string `json:"os"`
-		Arch      string `json:"arch"`
-		Ext       string `json:"ext"`
-	} `json:"releases"`
+	Releases []cacheRelease `json:"releases"`
+}
+
+type cacheRelease struct {
+	Name     string `json:"name"`
+	Filename string `json:"_filename"` // Node.js uses _filename for some sources
+	Version  string `json:"version"`
+	Download string `json:"download"`
+	Channel  string `json:"channel"`
+	OS       string `json:"os"`
+	Arch     string `json:"arch"`
+	Libc     string `json:"libc"`
+	Ext      string `json:"ext"`
+}
+
+// fieldDiff records a field-level difference for an asset that exists
+// in both caches (same filename) but has different classification.
+type fieldDiff struct {
+	Filename string
+	Field    string // "os", "arch", "libc", "ext", "channel"
+	Live     string
+	Go       string
+	BothSet  bool // true when both live and go have non-empty values
 }
 
 type packageDiff struct {
@@ -49,11 +62,12 @@ type packageDiff struct {
 	GoCount      int
 	OnlyInLive   []string // filenames only in Node.js cache
 	OnlyInGo     []string // filenames only in Go cache
-	VersionsLive []string // unique versions in live
-	VersionsGo   []string // unique versions in go
-	GoMissing    bool     // true if Go didn't produce output for this package
-	LiveMissing  bool     // true if no live cache for this package
-	Categories   []string // categorical difference labels
+	FieldDiffs   []fieldDiff // classification differences on shared assets
+	VersionsLive []string    // unique versions in live
+	VersionsGo   []string    // unique versions in go
+	GoMissing    bool        // true if Go didn't produce output for this package
+	LiveMissing  bool        // true if no live cache for this package
+	Categories   []string    // categorical difference labels
 }
 
 func main() {
@@ -386,6 +400,59 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 	sort.Strings(d.OnlyInLive)
 	sort.Strings(d.OnlyInGo)
 
+	// Field-level comparison on assets that exist in both caches.
+	// Build version+filename → fields maps from each cache.
+	if live != nil && goCache != nil {
+		type assetKey struct {
+			version  string
+			filename string
+		}
+		liveByKey := make(map[assetKey]cacheRelease)
+		for _, r := range live.Releases {
+			name := effectiveName(r.Name, r.Filename, r.Download)
+			ver := normVersion(r.Version)
+			liveByKey[assetKey{ver, name}] = r
+		}
+
+		for _, r := range goCache.Releases {
+			name := effectiveName(r.Name, r.Filename, r.Download)
+			ver := normVersion(r.Version)
+			lr, ok := liveByKey[assetKey{ver, name}]
+			if !ok {
+				continue
+			}
+
+			// Compare classification fields.
+			for _, cmp := range []struct {
+				field    string
+				liveVal  string
+				goVal    string
+			}{
+				{"os", lr.OS, r.OS},
+				{"arch", lr.Arch, r.Arch},
+				{"libc", lr.Libc, r.Libc},
+				{"ext", lr.Ext, r.Ext},
+				{"channel", lr.Channel, r.Channel},
+			} {
+				if cmp.liveVal != cmp.goVal {
+					d.FieldDiffs = append(d.FieldDiffs, fieldDiff{
+						Filename: name,
+						Field:    cmp.field,
+						Live:     cmp.liveVal,
+						Go:       cmp.goVal,
+						BothSet:  cmp.liveVal != "" && cmp.goVal != "",
+					})
+				}
+			}
+		}
+		sort.Slice(d.FieldDiffs, func(i, j int) bool {
+			if d.FieldDiffs[i].Field != d.FieldDiffs[j].Field {
+				return d.FieldDiffs[i].Field < d.FieldDiffs[j].Field
+			}
+			return d.FieldDiffs[i].Filename < d.FieldDiffs[j].Filename
+		})
+	}
+
 	return d
 }
 
@@ -399,9 +466,12 @@ func categorize(d *packageDiff) {
 		return
 	}
 
-	if len(d.OnlyInLive) == 0 && len(d.OnlyInGo) == 0 {
+	if len(d.OnlyInLive) == 0 && len(d.OnlyInGo) == 0 && len(d.FieldDiffs) == 0 {
 		d.Categories = append(d.Categories, "match")
 		return
+	}
+	if len(d.OnlyInLive) == 0 && len(d.OnlyInGo) == 0 && len(d.FieldDiffs) > 0 {
+		d.Categories = append(d.Categories, "fields-only")
 	}
 
 	// Check if differences are only version depth (Go has more history).
@@ -479,6 +549,32 @@ func categorize(d *packageDiff) {
 	}
 	if nonMetaOnlyInGo > 0 {
 		d.Categories = append(d.Categories, fmt.Sprintf("go-extra-assets(%d)", nonMetaOnlyInGo))
+	}
+
+	// Count field diffs by field name, separating real disagreements
+	// from expected "live empty, Go classified" differences.
+	type fieldCount struct {
+		bothSet  int // both caches have a value but they disagree
+		oneEmpty int // one side is empty (typically live — normalize.js fills at serve time)
+	}
+	fieldCounts := make(map[string]fieldCount)
+	for _, fd := range d.FieldDiffs {
+		fc := fieldCounts[fd.Field]
+		if fd.BothSet {
+			fc.bothSet++
+		} else {
+			fc.oneEmpty++
+		}
+		fieldCounts[fd.Field] = fc
+	}
+	for _, field := range []string{"os", "arch", "libc", "ext", "channel"} {
+		fc := fieldCounts[field]
+		if fc.bothSet > 0 {
+			d.Categories = append(d.Categories, fmt.Sprintf("diff-%s(%d)", field, fc.bothSet))
+		}
+		if fc.oneEmpty > 0 {
+			d.Categories = append(d.Categories, fmt.Sprintf("fill-%s(%d)", field, fc.oneEmpty))
+		}
 	}
 }
 
@@ -624,7 +720,7 @@ func printSummary(diffs []packageDiff) {
 
 func printDetails(diffs []packageDiff, diffsOnly bool, sampleN int) {
 	for _, d := range diffs {
-		if diffsOnly && len(d.OnlyInLive) == 0 && len(d.OnlyInGo) == 0 {
+		if diffsOnly && len(d.OnlyInLive) == 0 && len(d.OnlyInGo) == 0 && len(d.FieldDiffs) == 0 {
 			continue
 		}
 
@@ -635,8 +731,90 @@ func printDetails(diffs []packageDiff, diffsOnly bool, sampleN int) {
 
 		printAssetList("Only in LIVE", d.OnlyInLive, sampleN)
 		printAssetList("Only in Go", d.OnlyInGo, sampleN)
+		printFieldDiffs(d.FieldDiffs, sampleN)
 
 		fmt.Println()
+	}
+}
+
+// printFieldDiffs shows classification differences on shared assets.
+// Shows "real" diffs (both sides non-empty) first, then "fill" diffs
+// (one side empty) as a summary count only.
+func printFieldDiffs(diffs []fieldDiff, sampleN int) {
+	if len(diffs) == 0 {
+		return
+	}
+
+	// Separate real disagreements from fill diffs.
+	var real, fill []fieldDiff
+	for _, fd := range diffs {
+		if fd.BothSet {
+			real = append(real, fd)
+		} else {
+			fill = append(fill, fd)
+		}
+	}
+
+	// Show real disagreements in detail.
+	if len(real) > 0 {
+		byField := make(map[string][]fieldDiff)
+		for _, fd := range real {
+			byField[fd.Field] = append(byField[fd.Field], fd)
+		}
+
+		for _, field := range []string{"os", "arch", "libc", "ext", "channel"} {
+			fds := byField[field]
+			if len(fds) == 0 {
+				continue
+			}
+
+			fmt.Printf("  DISAGREE %s (%d):\n", field, len(fds))
+			printFieldDiffItems(fds, sampleN)
+		}
+	}
+
+	// Summarize fill diffs (live empty, Go classified) as counts.
+	if len(fill) > 0 {
+		byField := make(map[string]int)
+		for _, fd := range fill {
+			byField[fd.Field]++
+		}
+		var parts []string
+		for _, field := range []string{"os", "arch", "libc", "ext", "channel"} {
+			if n := byField[field]; n > 0 {
+				parts = append(parts, fmt.Sprintf("%s(%d)", field, n))
+			}
+		}
+		if len(parts) > 0 {
+			fmt.Printf("  Go fills empty: %s\n", strings.Join(parts, ", "))
+		}
+	}
+}
+
+func printFieldDiffItems(fds []fieldDiff, sampleN int) {
+	items := fds
+	if sampleN > 0 && len(items) > sampleN {
+		sampled := make([]fieldDiff, len(items))
+		copy(sampled, items)
+		rand.Shuffle(len(sampled), func(i, j int) {
+			sampled[i], sampled[j] = sampled[j], sampled[i]
+		})
+		items = sampled[:sampleN]
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].Filename < items[j].Filename
+		})
+	}
+
+	limit := 20
+	for i, fd := range items {
+		if sampleN == 0 && i >= limit {
+			fmt.Printf("    ... and %d more\n", len(fds)-limit)
+			break
+		}
+		fmt.Printf("    - %s: live=%q go=%q\n", fd.Filename, fd.Live, fd.Go)
+	}
+	if sampleN > 0 && len(fds) > sampleN {
+		fmt.Printf("    ... sampled %d of %d\n", sampleN, len(fds))
 	}
 }
 

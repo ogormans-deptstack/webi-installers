@@ -136,7 +136,7 @@ func NormalizeVersions(pkg string, assets []storage.Asset) {
 				assets[i].Version = "0." + v[1:] + ".0"
 			}
 		}
-	case "postgres", "psql":
+	case "pg", "postgres", "psql":
 		postgres.NormalizeVersions(assets)
 	case "watchexec":
 		watchexec.NormalizeVersions(assets)
