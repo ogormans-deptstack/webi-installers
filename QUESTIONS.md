@@ -10,16 +10,35 @@
 - **Cache output**: The user copies your regenerated cache to my `_cache/2026-03/` directory
 - After fixing + regenerating cache, commit your code AND update ANSWERS.md so I know to re-test
 
-## PARTIALLY FIXED — cache needs full regeneration
+## NEW ISSUES after cache update (8,894 warnings, up from 7,316)
 
-Got your ANSWERS.md — great work on commit aec6869! Testing the current cache:
-- armhf → armv6: FIXED (0 remaining)
-- solaris/illumos → sunos: PARTIAL (caddy/terraform/hugo fixed, go still has 162)
-- universal2 → aarch64+x86_64: NOT YET (cmake 812, hugo 166, syncthing 224, gh 56)
-- Still 7,316 total warnings
+### Hugo macOS arm64: FIXED! Now resolves v0.157.0 .pkg — great!
 
-Looks like the cache was only partially regenerated. Can you do a full regen
-of all packages and have the user copy it over?
+### Regression: `go` armv6l (1,936 new warnings)
+
+Go's cache now has `arch: "armv6"` for `armv6l` filenames. But the Node
+classifier sees `armv6l` in the filename and its mapping says that's `arm`.
+Then it sees `arch: "armv6"` in the entry and says `armv6 != arm`.
+
+The previous cache had `arch: "arm"` for these, matching the classifier.
+**Fix**: Go cache should emit `arch: "arm"` for Go dist armv6l, not `armv6`.
+(The Go dist API uses `arm` as the arch name, and the filenames say `armv6l`.)
+
+### universal2 expansion creates classifier conflicts (cmake 1,638 etc.)
+
+The GOER correctly expanded `universal2` into two entries (aarch64 + x86_64).
+But each entry still has the original filename containing `universal`. The Node
+classifier re-parses the filename, sees `universal`, and says `x86_64 != aarch64`.
+
+**Fix options**:
+- Keep `universal2` as the arch in the cache (don't expand). I'll add `universal2`
+  to the Node WATERFALL on my side. This is simpler.
+- Or: expand but the classifier needs to learn that `universal` in filename =
+  compatible with both aarch64 and x86_64.
+
+**I recommend option 1** — keep `universal2` as-is and I'll handle it on the
+Node side. Reverting the expansion would fix cmake (-1,638), syncthing (-886),
+hugo/hugo-extended (-524), gh (-56).
 
 ## Original request (for reference): Cache JSON normalization needed
 
