@@ -67,6 +67,7 @@ func newTestServer(t *testing.T) (*server, *httptest.Server) {
 	mux.HandleFunc("GET /api/releases/{rest...}", srv.handleReleasesAPI)
 	mux.HandleFunc("GET /v1/releases/{rest...}", srv.handleV1Releases)
 	mux.HandleFunc("GET /v1/resolve/{rest...}", srv.handleV1Resolve)
+	mux.HandleFunc("GET /api/installers/{rest...}", srv.handleInstaller)
 	mux.HandleFunc("GET /api/debug", srv.handleDebug)
 	mux.HandleFunc("GET /{pkgSpec}", srv.handleBootstrap)
 

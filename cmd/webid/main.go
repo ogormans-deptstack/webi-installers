@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -65,6 +66,9 @@ func main() {
 	mux.HandleFunc("GET /v1/releases/{rest...}", srv.handleV1Releases)
 	mux.HandleFunc("GET /v1/resolve/{rest...}", srv.handleV1Resolve)
 
+	// Full installer script (package-install.tpl.sh + install.sh).
+	mux.HandleFunc("GET /api/installers/{rest...}", srv.handleInstaller)
+
 	// Debug endpoint.
 	mux.HandleFunc("GET /api/debug", srv.handleDebug)
 
@@ -110,8 +114,9 @@ type server struct {
 	store         *fsstore.Store
 	installersDir string
 
-	mu       sync.RWMutex
-	packages map[string]*packageCache
+	mu        sync.RWMutex
+	packages  map[string]*packageCache
+	webiCksum string // cached sha1[:8] of webi.sh
 }
 
 // packageCache holds a loaded package's assets and catalog.
@@ -586,8 +591,8 @@ func (s *server) handleDebug(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleBootstrap serves /{package} and /{package}@{version}.
-// Detects the client's OS/arch from User-Agent, resolves the best
-// release, and renders the installer script.
+// This is the curl-pipe bootstrap: a minimal script that sets
+// WEBI_PKG/WEBI_HOST/WEBI_CHECKSUM and downloads+runs webi.
 func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	pkgSpec := r.PathValue("pkgSpec")
 
@@ -603,6 +608,72 @@ func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify package exists.
+	if s.getPackage(pkg) == nil && !s.isSelfHosted(pkg) {
+		http.Error(w, fmt.Sprintf("package %q not found", pkg), http.StatusNotFound)
+		return
+	}
+
+	baseURL := baseURLFromRequest(r)
+	webiPkg := pkg
+	if tag != "" {
+		webiPkg = pkg + "@" + tag
+	}
+
+	// Read and inject the curl-pipe bootstrap template.
+	tplPath := filepath.Join(s.installersDir, "_webi", "curl-pipe-bootstrap.tpl.sh")
+	tpl, err := os.ReadFile(tplPath)
+	if err != nil {
+		log.Printf("bootstrap: read template: %v", err)
+		http.Error(w, "bootstrap template not found", http.StatusInternalServerError)
+		return
+	}
+
+	script := string(tpl)
+	script = render.InjectVar(script, "WEBI_PKG", webiPkg)
+	script = render.InjectVar(script, "WEBI_HOST", baseURL)
+	script = render.InjectVar(script, "WEBI_CHECKSUM", s.webiChecksum())
+
+	// text/html so browsers see the meta redirect to cheat sheet.
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, script)
+}
+
+// handleInstaller serves /api/installers/{pkg}@{version}.sh
+// This is the full installer script with release resolution and
+// embedded install.sh.
+func (s *server) handleInstaller(w http.ResponseWriter, r *http.Request) {
+	rest := r.PathValue("rest")
+
+	// Parse: {pkg}@{version}.sh or {pkg}.sh
+	ext := ""
+	if strings.HasSuffix(rest, ".sh") {
+		ext = "sh"
+		rest = strings.TrimSuffix(rest, ".sh")
+	} else if strings.HasSuffix(rest, ".ps1") {
+		ext = "ps1"
+		rest = strings.TrimSuffix(rest, ".ps1")
+	} else {
+		http.Error(w, "unsupported format (use .sh or .ps1)", http.StatusBadRequest)
+		return
+	}
+
+	pkg, tag := rest, ""
+	if idx := strings.IndexByte(rest, '@'); idx >= 0 {
+		pkg = rest[:idx]
+		tag = rest[idx+1:]
+	}
+
+	if pkg == "" {
+		http.Error(w, "package name required", http.StatusBadRequest)
+		return
+	}
+	if ext == "ps1" {
+		// TODO: PowerShell installer rendering.
+		http.Error(w, "PowerShell installer not yet implemented", http.StatusNotImplemented)
+		return
+	}
+
 	// Detect platform from User-Agent.
 	ua := uadetect.FromRequest(r)
 	if ua.OS == "" {
@@ -610,7 +681,6 @@ func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check for selfhosted package first.
 	isSelfHosted := s.isSelfHosted(pkg)
 	pc := s.getPackage(pkg)
 
@@ -619,11 +689,7 @@ func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build render params.
-	baseURL := "https://" + r.Host
-	if r.TLS == nil && !strings.Contains(r.Host, "webinstall") {
-		baseURL = "http://" + r.Host
-	}
+	baseURL := baseURLFromRequest(r)
 
 	p := render.Params{
 		Host:    baseURL,
@@ -642,7 +708,6 @@ func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 			Libc: string(ua.Libc),
 		}
 
-		// Handle channel selectors in tag.
 		switch strings.ToLower(tag) {
 		case "stable", "latest", "":
 			// Default.
@@ -660,7 +725,6 @@ func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 
 		res, err := resolver.Resolve(pc.assets, req)
 		if err != nil {
-			// Build error CSV like Node.js does.
 			p.Version = "0.0.0"
 			p.Channel = "error"
 			p.Ext = "err"
@@ -688,7 +752,6 @@ func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 			p.CSV = buildCSV(p)
 		}
 
-		// Add catalog info.
 		p.PkgStable = pc.catalog.Stable
 		p.PkgLatest = pc.catalog.Latest
 		p.PkgOSes = strings.Join(pc.catalog.OSes, " ")
@@ -697,11 +760,9 @@ func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 		p.PkgFormats = strings.Join(pc.catalog.Formats, " ")
 	}
 
-	// Build releases URL.
 	p.ReleasesURL = fmt.Sprintf("%s/api/releases/%s@%s.tab?os=%s&arch=%s&libc=%s&formats=tar&pretty=true",
 		baseURL, pkg, tag, p.OS, p.Arch, p.Libc)
 
-	// Render the installer script.
 	tplPath := filepath.Join(s.installersDir, "_webi", "package-install.tpl.sh")
 	script, err := render.Bash(tplPath, s.installersDir, pkg, p)
 	if err != nil {
@@ -712,6 +773,40 @@ func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprint(w, script)
+}
+
+// baseURLFromRequest builds the base URL from the request.
+func baseURLFromRequest(r *http.Request) string {
+	if r.TLS != nil || strings.Contains(r.Host, "webinstall") || strings.Contains(r.Host, "webi.") {
+		return "https://" + r.Host
+	}
+	return "http://" + r.Host
+}
+
+// webiChecksum returns the checksum of the webi.sh bootstrap script.
+func (s *server) webiChecksum() string {
+	s.mu.RLock()
+	cksum := s.webiCksum
+	s.mu.RUnlock()
+	if cksum != "" {
+		return cksum
+	}
+
+	// Calculate checksum from webi.sh file.
+	webiPath := filepath.Join(s.installersDir, "webi", "webi.sh")
+	data, err := os.ReadFile(webiPath)
+	if err != nil {
+		return "00000000"
+	}
+
+	h := sha1.New()
+	h.Write(data)
+	cksum = fmt.Sprintf("%x", h.Sum(nil))[:8]
+
+	s.mu.Lock()
+	s.webiCksum = cksum
+	s.mu.Unlock()
+	return cksum
 }
 
 // buildCSV creates the WEBI_CSV line in the Node.js format.

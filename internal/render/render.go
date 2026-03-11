@@ -123,7 +123,7 @@ func Bash(tplPath, installersDir, pkgName string, p Params) (string, error) {
 	}
 
 	for _, v := range vars {
-		text = injectVar(text, v.name, v.value)
+		text = InjectVar(text, v.name, v.value)
 	}
 
 	// Inject the installer script at the {{ installer }} marker.
@@ -151,8 +151,15 @@ func getVarPattern(name string) *regexp.Regexp {
 	return p
 }
 
-// injectVar replaces a template variable line with its value.
-func injectVar(text, name, value string) string {
+// InjectVar replaces a template variable line with its value.
+// It matches lines like:
+//
+//	#WEBI_VERSION=
+//	#export WEBI_PKG_URL=
+//	export WEBI_HOST=
+//
+// and replaces them with the value in single quotes.
+func InjectVar(text, name, value string) string {
 	p := getVarPattern(name)
 	return p.ReplaceAllString(text, "${1}${3}"+name+"='"+sanitizeShellValue(value)+"'")
 }

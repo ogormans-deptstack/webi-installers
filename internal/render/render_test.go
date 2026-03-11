@@ -45,7 +45,7 @@ func TestInjectVar(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := injectVar(tt.input, tt.key, tt.value)
+			got := InjectVar(tt.input, tt.key, tt.value)
 			if strings.TrimSpace(got) != strings.TrimSpace(tt.want) {
 				t.Errorf("got  %q\nwant %q", got, tt.want)
 			}
@@ -65,11 +65,11 @@ __bootstrap_webi() {
 `
 
 	result := tpl
-	result = injectVar(result, "PKG_NAME", "bat")
-	result = injectVar(result, "WEBI_OS", "linux")
-	result = injectVar(result, "WEBI_ARCH", "x86_64")
-	result = injectVar(result, "WEBI_VERSION", "0.26.1")
-	result = injectVar(result, "WEBI_HOST", "https://webinstall.dev")
+	result = InjectVar(result, "PKG_NAME", "bat")
+	result = InjectVar(result, "WEBI_OS", "linux")
+	result = InjectVar(result, "WEBI_ARCH", "x86_64")
+	result = InjectVar(result, "WEBI_VERSION", "0.26.1")
+	result = InjectVar(result, "WEBI_HOST", "https://webinstall.dev")
 
 	if !strings.Contains(result, "PKG_NAME='bat'") {
 		t.Error("PKG_NAME not injected")
