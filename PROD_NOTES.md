@@ -46,6 +46,18 @@ The Go cache filters releases more aggressively than the old Node normalize.js:
 - These are improvements — the filtered results better reflect what webi can
   actually install.
 
+### Known Issues Needing Resolution
+
+- **WATERFALL libc vs gnu**: The Go cache correctly uses `libc='gnu'` for
+  glibc-linked Linux binaries (Rust projects like bat, rg; also node). The
+  build-classifier WATERFALL maps `libc` => `['none', 'libc']` but never tries
+  `gnu`, so Linux glibc hosts can't match these packages. Fix needed in
+  `host-targets.js`: `libc: ['none', 'gnu', 'libc']`. See QUESTIONS.md in the
+  Go agent worktree.
+- **ANYOS/ANYARCH .git priority**: Packages like caddy and jq have `.git`
+  source URLs classified as `ANYOS`/`ANYARCH`. The triplet enumeration tries
+  ANYOS before specific OS, so `.git` matches before platform-specific binaries.
+
 ### Known Pre-existing Issues
 
 - **`transform-releases.js` self-test**: The `if (require.main === module)`
