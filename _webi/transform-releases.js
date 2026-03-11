@@ -2,35 +2,13 @@
 
 var Releases = module.exports;
 
+var Fs = require('node:fs/promises');
 var path = require('path');
 var _normalize = require('./normalize.js');
 
 var cache = {};
-//var staleAge = 5 * 1000;
-//var expiredAge = 15 * 1000;
-var staleAge = 5 * 60 * 1000;
-var expiredAge = 15 * 60 * 1000;
 
-let installerDir = path.join(__dirname, '..');
-
-Releases.get = async function (pkgdir) {
-  let get;
-  try {
-    get = require(`${pkgdir}/releases.js`);
-    // TODO update all releases files with module.exports.xxxx = 'foo';
-    if (!get.latest) {
-      get.latest = get;
-    }
-  } catch (e) {
-    let err = new Error('no releases.js for', pkgdir.split(/[\/\\]+/).pop());
-    err.code = 'E_NO_RELEASE';
-    throw err;
-  }
-
-  let all = await get.latest();
-
-  return _normalize(all);
-};
+var CACHE_DIR = path.join(__dirname, '..', '_cache');
 
 // TODO needs a proper test, and more accurate (though perhaps far less simple) code
 function createFormatsSorter(formats) {
@@ -87,99 +65,50 @@ function createFormatsSorter(formats) {
 }
 
 async function getCachedReleases(pkg) {
-  // returns { download: '<template string>', releases: [{ version, date, os, arch, lts, channel, download}] }
+  // returns { download: '', releases: [{ version, date, os, arch, lts, channel, download}] }
 
-  async function chainCachePromise(fn) {
-    cache[pkg].promise = cache[pkg].promise.then(fn);
-    return cache[pkg].promise;
+  if (cache[pkg]) {
+    return cache[pkg];
   }
 
-  async function sleep(ms) {
-    return await new Promise(function (resolve, reject) {
-      setTimeout(resolve, ms);
-    });
-  }
+  let yearMonth = new Date().toISOString().slice(0, 7);
+  let dataFile = `${CACHE_DIR}/${yearMonth}/${pkg}.json`;
 
-  async function putCache() {
-    var age = Date.now() - cache[pkg].updatedAt;
-    if (age < staleAge) {
-      //console.debug('NOT STALE ANYMORE - updated in previous promise');
-      return cache[pkg].all;
+  let json = await Fs.readFile(dataFile, 'utf8').catch(function (err) {
+    if (err.code === 'ENOENT') {
+      return null;
     }
+    throw err;
+  });
 
-    //console.debug('DOWNLOADING NEW "%s" releases', pkg);
-    var pkgdir = path.join(installerDir, pkg);
-
-    // workaround for request timeout seeming to not work
-    let complete = false;
-    await Promise.race([
-      Releases.get(pkgdir)
-        .catch(function (err) {
-          if ('E_NO_RELEASE' === err.code) {
-            let all = { _error: 'E_NO_RELEASE', download: '', releases: [] };
-            return all;
-          }
-
-          throw err;
-        })
-        .catch(function (err) {
-          let hasReleases = cache[pkg].all?.releases?.length > 1;
-          if (!hasReleases) {
-            throw err;
-          }
-
-          console.error(`Error: the BOOGEYMAN got us!`);
-          console.error(err.stack);
-
-          return cache[pkg].all;
-        })
-        .then(function (all) {
-          // Note: it is possible for slightly older data
-          // to replace slightly newer data, but this is better
-          // than being in a cycle where release updates _always_
-          // take longer than expected.
-          //console.debug('DOWNLOADED NEW "%s" releases', pkg);
-          cache[pkg].updatedAt = Date.now();
-          cache[pkg].all = all;
-          complete = true;
-        }),
-      sleep(15000).then(function () {
-        if (complete) {
-          return;
-        }
-        console.error(`request timeout waiting for '${pkg}' release info`);
-      }),
-    ]);
-
-    return cache[pkg].all;
+  if (!json) {
+    let empty = { download: '', releases: [] };
+    cache[pkg] = empty;
+    return empty;
   }
 
-  if (!cache[pkg]) {
-    cache[pkg] = {
-      updatedAt: 0,
-      all: { download: '', releases: [] },
-      promise: Promise.resolve(),
-    };
+  let all;
+  try {
+    all = JSON.parse(json);
+  } catch (e) {
+    console.error(`error: ${dataFile}:\n\t${e.message}`);
+    let empty = { download: '', releases: [] };
+    cache[pkg] = empty;
+    return empty;
   }
 
-  var bgRenewal;
-  var age = Date.now() - cache[pkg].updatedAt;
-  var fresh = age < staleAge;
-  if (!fresh) {
-    bgRenewal = chainCachePromise(putCache);
+  // Clear pre-classified fields so normalize() re-detects from filenames,
+  // matching the legacy API behavior (e.g. 'darwin' → 'macos')
+  for (let rel of all.releases) {
+    rel.os = '';
+    rel.arch = '';
+    rel.libc = '';
+    rel.ext = '';
   }
 
-  var tooStale = age > expiredAge;
-  if (!tooStale) {
-    return await cache[pkg].all;
-  }
-
-  return await Promise.race([
-    bgRenewal,
-    sleep(5000).then(function () {
-      return cache[pkg].all;
-    }),
-  ]);
+  all = _normalize(all);
+  cache[pkg] = all;
+  return all;
 }
 
 async function filterReleases(
