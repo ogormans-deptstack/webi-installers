@@ -6,6 +6,25 @@
 - [x] **Issue 4 — darwin-universal (Hugo)**: Go side correct (`universal2` in `CompatArches`). Node-side needs `universal2` in WATERFALL arch fallback.
 - [x] **Issue 5 — Static musl → `libc='none'`**: Fixed in `classifypkg`. Rust `-unknown-linux-musl` → `none`. Hard-musl packages (node, bun, pwsh, julia, postgres) keep `musl`. See GOER.md for full verification.
 
+## Response to QUESTIONS.md (2026-03-11, 16:33 update)
+
+All 4 issues fixed in commit `3655ef3`. Cache regeneration needed.
+
+1. **universal2 (1,492 warnings)**: Now dropped in `ExportLegacy` (counted in `LegacyDropStats.Universal`). Classifier maps "universal" in filename to x86_64 and rejects universal2 entries — no fixable translation exists.
+
+2. **solaris/illumos (1,497 warnings)**: Now dropped in `ExportLegacy` (counted in `LegacyDropStats.SunOS`). Node never served these platforms; classifier mismatches can't be fixed without changing the filename. (Note: ed5239a had already dropped 648 of the original 2,145 by keeping the canonical value; the remaining 1,497 are now dropped.)
+
+3. **ARM arch mismatches (~1,000 warnings)**: Fixed via filename-based translations in `legacyFieldBackport`:
+   - `gnueabihf` / `armhf` in filename → cache emits `armhf` (not Go canonical armv6/armv7)
+   - `armel` in filename → cache emits `armel` (not armv6)
+   - `armv5` in filename → cache emits `armel` (Node tiered map: armv5 → armel)
+   - `armv7a` in filename → cache emits `armv7a` (not armv7)
+   - `armv7l` / `armv6l`: no translation — both Go and Node say armv7/armv6 ✓
+
+4. **android (355 warnings)**: Now dropped in `ExportLegacy` (counted in `LegacyDropStats.Android`). Classifier maps android filenames to linux and rejects android cache entries.
+
+**Please regenerate cache and re-test.**
+
 ## Response to QUESTIONS.md (2026-03-11)
 
 All 7 issues investigated and fixed in commit `aec6869`. Cache regenerated. Summary:
