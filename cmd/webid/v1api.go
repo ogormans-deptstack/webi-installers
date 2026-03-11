@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -248,14 +250,12 @@ func (s *server) handleV1Resolve(w http.ResponseWriter, r *http.Request) {
 		enc.Encode(result)
 	case "tab":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		data, err := csvutil.Marshal([]v1ResolveResult{result})
+		data, err := marshalTSV([]v1ResolveResult{result})
 		if err != nil {
 			http.Error(w, "encode error: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		// csvutil uses comma by default; replace with tabs.
-		w.Write(commaToTab(data))
-		w.Write([]byte("\n"))
+		w.Write(data)
 	default:
 		http.Error(w, "unsupported format: "+format, http.StatusBadRequest)
 	}
@@ -327,17 +327,12 @@ func (s *server) v1ServeTSV(w http.ResponseWriter, assets []storage.Asset) {
 		releases[i] = assetToV1Release(a)
 	}
 
-	data, err := csvutil.Marshal(releases)
+	data, err := marshalTSV(releases)
 	if err != nil {
 		http.Error(w, "encode error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	// csvutil uses comma by default; replace commas with tabs in the header
-	// and data lines. This is safe because our fields never contain commas
-	// (we use spaces for lists, and URLs use no commas).
-	w.Write(commaToTab(data))
-	w.Write([]byte("\n"))
+	w.Write(data)
 }
 
 func (s *server) v1ServeJSON(w http.ResponseWriter, assets []storage.Asset) {
@@ -361,10 +356,8 @@ func (s *server) v1ServeEmpty(w http.ResponseWriter, format string) {
 	case "tab":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		// Just the header.
-		releases := []v1Release{}
-		data, _ := csvutil.Marshal(releases)
-		w.Write(commaToTab(data))
-		w.Write([]byte("\n"))
+		data, _ := marshalTSV([]v1Release{})
+		w.Write(data)
 	}
 }
 
@@ -433,18 +426,24 @@ func hasVariant(variants []string, want string) bool {
 	return false
 }
 
-// commaToTab replaces commas with tabs in csvutil output.
-// Safe because our fields never contain commas or tabs.
-func commaToTab(data []byte) []byte {
-	result := make([]byte, len(data))
-	for i, b := range data {
-		if b == ',' {
-			result[i] = '\t'
-		} else {
-			result[i] = b
+// marshalTSV encodes a slice of structs as tab-separated values with a header.
+// Uses csvutil for struct-to-CSV mapping, with csv.Writer set to tab delimiter.
+func marshalTSV[T any](records []T) ([]byte, error) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	w.Comma = '\t'
+
+	enc := csvutil.NewEncoder(w)
+	for _, r := range records {
+		if err := enc.Encode(r); err != nil {
+			return nil, err
 		}
 	}
-	return result
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // normalizeV1Arch maps query arch names to canonical Go names.
