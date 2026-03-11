@@ -32,11 +32,9 @@ type LegacyCache struct {
 
 // LegacyDropStats reports how many assets were excluded during ExportLegacy.
 type LegacyDropStats struct {
-	Variants  int // dropped: has build variant tags (e.g. rocm, installer, fxdependent)
-	Formats   int // dropped: format not recognized by the Node.js server
-	Universal int // dropped: universal2/universal1 arch — classifier maps "universal" in filename to x86_64 and rejects the mismatch
-	SunOS     int // dropped: solaris/illumos OS — Node never served these; classifier mismatches are unfixable
-	Android   int // dropped: android OS — classifier maps android filenames to linux
+	Variants int // dropped: has build variant tags (e.g. rocm, installer, fxdependent)
+	Formats  int // dropped: format not recognized by the Node.js server
+	Android  int // dropped: android OS — classifier maps android filenames to linux
 }
 
 // ToAsset converts a LegacyAsset to the internal Asset type.
@@ -76,13 +74,41 @@ func (a Asset) toLegacy() LegacyAsset {
 // values the legacy Node.js resolver expects. This is called at export time
 // only — the canonical values are preserved in Go-native storage (pgstore).
 //
-// Global rules (all packages):
-//   - ARM arch: translated from Go canonical to the value the Node build-classifier
-//     extracts from the filename (see legacyARMArchFromFilename).
+// The Node build-classifier re-parses each asset's download filename and drops
+// any entry where the cache field doesn't match what it extracts from the name.
+// These translations ensure the cache matches the classifier's extraction.
+//
+// Global arch translations (all packages):
+//   - universal2/universal1 → x86_64: classifier maps "universal" in filename
+//     to x86_64. The darwin WATERFALL falls back aarch64→x86_64, so arm64
+//     users still receive these builds.
+//   - x86_64_v2 → x86_64: classifier doesn't recognize micro-arch level suffixes.
+//   - mips64r6/mips64r6el → mips64: MIPS Release 6 variants map to the base arch.
+//   - ARM (filename-based): gnueabihf/armhf→armhf, armel→armel, armv5→armel,
+//     armv7a→armv7a. Go normalizes these; Node classifier preserves the
+//     original Debian/Rust naming. See legacyARMArchFromFilename.
+//
+// Note: solaris/illumos/sunos are kept as-is. The build-classifier (triplet.js)
+// recognizes all three as distinct values, and the live cache uses them directly.
 //
 // Package-specific rules replicate per-package overrides in production's releases.js:
 //   - ffmpeg: Windows .gz → .exe  (prod releases.js: rel.ext = 'exe')
 func legacyFieldBackport(pkg string, a Asset) Asset {
+	// Universal fat binaries: classifier maps "universal" in filename to x86_64.
+	if a.Arch == "universal2" || a.Arch == "universal1" {
+		a.Arch = "x86_64"
+	}
+
+	// x86_64 micro-arch levels: classifier doesn't know these suffixes.
+	if a.Arch == "x86_64_v2" || a.Arch == "x86_64_v3" || a.Arch == "x86_64_v4" {
+		a.Arch = "x86_64"
+	}
+
+	// MIPS Release 6 variants: map to the base mips64 arch.
+	if a.Arch == "mips64r6" || a.Arch == "mips64r6el" {
+		a.Arch = "mips64"
+	}
+
 	// ARM arch: the Node classifier re-parses filenames and expects the cache
 	// arch to match what it extracts. Go normalizes (gnueabihf→armv6, armhf→armv7)
 	// but the Node classifier preserves the original Debian/Rust naming.
@@ -166,8 +192,6 @@ var legacyFormats = map[string]bool{
 // The pkg name is used to apply per-package field translations (see legacyFieldBackport).
 // Assets are excluded when:
 //   - Variants is non-empty (Node.js has no variant logic)
-//   - Arch is universal2 or universal1 (classifier maps "universal" in filename to x86_64 and rejects the mismatch)
-//   - OS is solaris or illumos (Node never served these; classifier mismatches are unfixable)
 //   - OS is android (classifier maps android filenames to linux)
 //   - Format is non-empty and not in the Node.js recognized set
 //
@@ -182,26 +206,13 @@ func ExportLegacy(pkg string, pd PackageData) (LegacyCache, LegacyDropStats) {
 			stats.Variants++
 			continue
 		}
-		// Skip universal fat binaries — classifier maps "universal" in filename
-		// to x86_64 and rejects any cache entry that doesn't say x86_64.
-		if a.Arch == "universal2" || a.Arch == "universal1" {
-			stats.Universal++
-			continue
-		}
-		// Skip solaris/illumos — Node never served these platforms;
-		// the classifier causes mismatches that can't be fixed without
-		// changing the filename.
-		if a.OS == "solaris" || a.OS == "illumos" {
-			stats.SunOS++
-			continue
-		}
 		// Skip android — classifier maps android filenames to linux OS,
 		// which mismatches cache entries tagged android.
 		if a.OS == "android" {
 			stats.Android++
 			continue
 		}
-		// Apply per-package legacy field translations before format check.
+		// Apply per-package and global legacy field translations.
 		a = legacyFieldBackport(pkg, a)
 		// Skip formats Node.js doesn't recognize.
 		if a.Format != "" && !legacyFormats[a.Format] {

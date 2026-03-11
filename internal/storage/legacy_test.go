@@ -110,61 +110,6 @@ func TestExportLegacyDrops(t *testing.T) {
 		}
 	})
 
-	t.Run("universal2_dropped", func(t *testing.T) {
-		// universal2 fat binaries are dropped. The Node classifier maps "universal"
-		// in the filename to x86_64, then rejects the cache entry because it says
-		// "universal2". The mismatch can't be fixed without changing the filename.
-		pd := storage.PackageData{
-			Assets: []storage.Asset{
-				{Filename: "hugo_0.145.0_darwin-universal.tar.gz", OS: "darwin", Arch: "universal2", Format: ".tar.gz"},
-				{Filename: "hugo_0.145.0_darwin-arm64.tar.gz", OS: "darwin", Arch: "aarch64", Format: ".tar.gz"},
-			},
-		}
-		lc, stats := storage.ExportLegacy("hugo", pd)
-		if stats.Universal != 1 {
-			t.Errorf("Universal dropped = %d, want 1", stats.Universal)
-		}
-		if len(lc.Releases) != 1 {
-			t.Errorf("releases = %d, want 1 (arm64 only)", len(lc.Releases))
-		}
-		if len(lc.Releases) > 0 && lc.Releases[0].Arch != "aarch64" {
-			t.Errorf("kept arch = %q, want aarch64", lc.Releases[0].Arch)
-		}
-	})
-
-	t.Run("solaris_dropped", func(t *testing.T) {
-		// Solaris entries are dropped: Node never served these platforms and the
-		// classifier produces unfixable mismatches for them.
-		pd := storage.PackageData{
-			Assets: []storage.Asset{
-				{Filename: "go1.20.1.solaris-amd64.tar.gz", OS: "solaris", Arch: "x86_64", Format: ".tar.gz"},
-				{Filename: "go1.20.1.linux-amd64.tar.gz", OS: "linux", Arch: "x86_64", Format: ".tar.gz"},
-			},
-		}
-		lc, stats := storage.ExportLegacy("go", pd)
-		if stats.SunOS != 1 {
-			t.Errorf("SunOS dropped = %d, want 1", stats.SunOS)
-		}
-		if len(lc.Releases) != 1 {
-			t.Errorf("releases = %d, want 1 (linux only)", len(lc.Releases))
-		}
-	})
-
-	t.Run("illumos_dropped", func(t *testing.T) {
-		pd := storage.PackageData{
-			Assets: []storage.Asset{
-				{Filename: "go1.20.1.illumos-amd64.tar.gz", OS: "illumos", Arch: "x86_64", Format: ".tar.gz"},
-			},
-		}
-		lc, stats := storage.ExportLegacy("go", pd)
-		if stats.SunOS != 1 {
-			t.Errorf("SunOS dropped = %d, want 1", stats.SunOS)
-		}
-		if len(lc.Releases) != 0 {
-			t.Errorf("releases = %d, want 0", len(lc.Releases))
-		}
-	})
-
 	t.Run("android_dropped", func(t *testing.T) {
 		// Android entries are dropped: the classifier maps android filenames to
 		// linux OS and then rejects the cache entry that says android.
@@ -222,6 +167,104 @@ func TestExportLegacyDrops(t *testing.T) {
 // TestExportLegacyTranslations verifies that legacyFieldBackport applies the
 // correct field translations for Node.js compatibility.
 func TestExportLegacyTranslations(t *testing.T) {
+	t.Run("universal2_translated_to_x86_64", func(t *testing.T) {
+		// universal2 fat binaries: the Node classifier sees "universal" in the
+		// filename and maps it to x86_64. Cache must say x86_64 to match.
+		// The darwin WATERFALL (aarch64 → [aarch64, x86_64]) means arm64 users
+		// also receive these builds as a fallback.
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "hugo_0.145.0_darwin-universal.tar.gz", OS: "darwin", Arch: "universal2", Format: ".tar.gz"},
+				{Filename: "hugo_0.145.0_darwin-arm64.tar.gz", OS: "darwin", Arch: "aarch64", Format: ".tar.gz"},
+			},
+		}
+		lc, stats := storage.ExportLegacy("hugo", pd)
+		if stats.Variants != 0 || stats.Formats != 0 || stats.Android != 0 {
+			t.Errorf("unexpected drops: %+v", stats)
+		}
+		if len(lc.Releases) != 2 {
+			t.Fatalf("releases = %d, want 2", len(lc.Releases))
+		}
+		var universal2Arch string
+		for _, r := range lc.Releases {
+			if r.Name == "hugo_0.145.0_darwin-universal.tar.gz" {
+				universal2Arch = r.Arch
+			}
+		}
+		if universal2Arch != "x86_64" {
+			t.Errorf("universal2 arch in legacy = %q, want x86_64", universal2Arch)
+		}
+	})
+
+	t.Run("solaris_kept_as_is", func(t *testing.T) {
+		// Solaris/illumos/sunos are kept as-is. The build-classifier (triplet.js)
+		// recognizes all three as distinct values and matches them correctly.
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "go1.20.1.solaris-amd64.tar.gz", OS: "solaris", Arch: "x86_64", Format: ".tar.gz"},
+			},
+		}
+		lc, stats := storage.ExportLegacy("go", pd)
+		if stats.Android != 0 || stats.Variants != 0 || stats.Formats != 0 {
+			t.Errorf("unexpected drops: %+v", stats)
+		}
+		if len(lc.Releases) != 1 {
+			t.Fatalf("releases = %d, want 1", len(lc.Releases))
+		}
+		if lc.Releases[0].OS != "solaris" {
+			t.Errorf("OS = %q, want solaris", lc.Releases[0].OS)
+		}
+	})
+
+	t.Run("illumos_kept_as_is", func(t *testing.T) {
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "go1.20.1.illumos-amd64.tar.gz", OS: "illumos", Arch: "x86_64", Format: ".tar.gz"},
+			},
+		}
+		lc, _ := storage.ExportLegacy("go", pd)
+		if len(lc.Releases) != 1 {
+			t.Fatalf("releases = %d, want 1", len(lc.Releases))
+		}
+		if lc.Releases[0].OS != "illumos" {
+			t.Errorf("OS = %q, want illumos", lc.Releases[0].OS)
+		}
+	})
+
+	t.Run("x86_64_v2_translated_to_x86_64", func(t *testing.T) {
+		// Micro-arch level suffixes (v2/v3/v4) are not recognized by the classifier.
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "tool-linux-x86_64_v2.tar.gz", OS: "linux", Arch: "x86_64_v2", Format: ".tar.gz"},
+			},
+		}
+		lc, _ := storage.ExportLegacy("tool", pd)
+		if len(lc.Releases) != 1 {
+			t.Fatalf("releases = %d, want 1", len(lc.Releases))
+		}
+		if lc.Releases[0].Arch != "x86_64" {
+			t.Errorf("arch = %q, want x86_64", lc.Releases[0].Arch)
+		}
+	})
+
+	t.Run("mips64r6_translated_to_mips64", func(t *testing.T) {
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "tool-linux-mips64r6.tar.gz", OS: "linux", Arch: "mips64r6", Format: ".tar.gz"},
+				{Filename: "tool-linux-mips64r6el.tar.gz", OS: "linux", Arch: "mips64r6el", Format: ".tar.gz"},
+			},
+		}
+		lc, _ := storage.ExportLegacy("tool", pd)
+		if len(lc.Releases) != 2 {
+			t.Fatalf("releases = %d, want 2", len(lc.Releases))
+		}
+		for _, r := range lc.Releases {
+			if r.Arch != "mips64" {
+				t.Errorf("arch = %q, want mips64 (mips64r6* → mips64)", r.Arch)
+			}
+		}
+	})
+
 	t.Run("ffmpeg_windows_gz_to_exe", func(t *testing.T) {
 		// ffmpeg Windows releases are .gz archives containing a bare .exe.
 		// Production releases.js overrides ext to 'exe' for install compatibility.
@@ -242,12 +285,11 @@ func TestExportLegacyTranslations(t *testing.T) {
 			}
 		}
 		if windowsExt != ".exe" {
-			t.Errorf("ffmpeg windows ext = %q, want %q", windowsExt, ".exe")
+			t.Errorf("ffmpeg windows ext = %q, want .exe", windowsExt)
 		}
 	})
 
 	t.Run("ffmpeg_translation_not_applied_to_other_packages", func(t *testing.T) {
-		// The ffmpeg .gz→.exe translation is package-specific.
 		pd := storage.PackageData{
 			Assets: []storage.Asset{
 				{Filename: "othertool-windows-amd64.gz", OS: "windows", Arch: "x86_64", Format: ".gz"},
@@ -258,7 +300,7 @@ func TestExportLegacyTranslations(t *testing.T) {
 			t.Fatalf("releases = %d, want 1", len(lc.Releases))
 		}
 		if lc.Releases[0].Ext != ".gz" {
-			t.Errorf("ext = %q, want %q (no translation outside ffmpeg)", lc.Releases[0].Ext, ".gz")
+			t.Errorf("ext = %q, want .gz (no translation outside ffmpeg)", lc.Releases[0].Ext)
 		}
 	})
 
@@ -353,7 +395,7 @@ func TestExportLegacyTranslations(t *testing.T) {
 	})
 
 	t.Run("arm_armv7l_unchanged", func(t *testing.T) {
-		// armv7l in filename: Go=armv7, Node classifier also extracts armv7. No translation.
+		// armv7l: Go=armv7, Node classifier also extracts armv7. No translation.
 		pd := storage.PackageData{
 			Assets: []storage.Asset{
 				{Filename: "tool-armv7l-linux.tar.gz", OS: "linux", Arch: "armv7", Format: ".tar.gz"},
@@ -369,7 +411,7 @@ func TestExportLegacyTranslations(t *testing.T) {
 	})
 
 	t.Run("arm_armv6l_unchanged", func(t *testing.T) {
-		// armv6l in filename: Go=armv6, Node classifier also extracts armv6. No translation.
+		// armv6l: Go=armv6, Node classifier also extracts armv6. No translation.
 		pd := storage.PackageData{
 			Assets: []storage.Asset{
 				{Filename: "tool-armv6l-linux.tar.gz", OS: "linux", Arch: "armv6", Format: ".tar.gz"},
@@ -394,14 +436,14 @@ func TestExportLegacyMixed(t *testing.T) {
 			{Filename: "tool-linux-amd64.tar.gz", OS: "linux", Arch: "x86_64", Format: ".tar.gz"},
 			// dropped: variant build
 			{Filename: "tool-linux-amd64-rocm.tar.gz", OS: "linux", Arch: "x86_64", Format: ".tar.gz", Variants: []string{"rocm"}},
-			// dropped: universal2
-			{Filename: "tool-darwin-universal.tar.gz", OS: "darwin", Arch: "universal2", Format: ".tar.gz"},
-			// dropped: illumos
-			{Filename: "tool-illumos-amd64.tar.gz", OS: "illumos", Arch: "x86_64", Format: ".tar.gz"},
 			// dropped: android
 			{Filename: "tool-android-arm64.tar.gz", OS: "android", Arch: "aarch64", Format: ".tar.gz"},
 			// dropped: .AppImage format
 			{Filename: "tool.AppImage", OS: "linux", Format: ".AppImage"},
+			// kept (translated): universal2 → x86_64
+			{Filename: "tool-darwin-universal.tar.gz", OS: "darwin", Arch: "universal2", Format: ".tar.gz"},
+			// kept: solaris as-is
+			{Filename: "tool-solaris-amd64.tar.gz", OS: "solaris", Arch: "x86_64", Format: ".tar.gz"},
 		},
 	}
 	lc, stats := storage.ExportLegacy("tool", pd)
@@ -409,19 +451,24 @@ func TestExportLegacyMixed(t *testing.T) {
 	if stats.Variants != 1 {
 		t.Errorf("Variants = %d, want 1", stats.Variants)
 	}
-	if stats.Universal != 1 {
-		t.Errorf("Universal = %d, want 1", stats.Universal)
-	}
-	if stats.SunOS != 1 {
-		t.Errorf("SunOS = %d, want 1", stats.SunOS)
-	}
 	if stats.Android != 1 {
 		t.Errorf("Android = %d, want 1", stats.Android)
 	}
 	if stats.Formats != 1 {
 		t.Errorf("Formats = %d, want 1", stats.Formats)
 	}
-	if len(lc.Releases) != 1 {
-		t.Errorf("releases = %d, want 1 (linux only)", len(lc.Releases))
+	if len(lc.Releases) != 3 {
+		t.Errorf("releases = %d, want 3 (linux + darwin/x86_64 + solaris)", len(lc.Releases))
+	}
+
+	// Verify universal2 was translated to x86_64.
+	var darwinArch string
+	for _, r := range lc.Releases {
+		if r.OS == "darwin" {
+			darwinArch = r.Arch
+		}
+	}
+	if darwinArch != "x86_64" {
+		t.Errorf("darwin arch = %q, want x86_64 (translated from universal2)", darwinArch)
 	}
 }
