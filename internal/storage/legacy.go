@@ -71,17 +71,13 @@ func (a Asset) toLegacy() LegacyAsset {
 // values the legacy Node.js resolver expects. This is called at export time
 // only — the canonical values are preserved in Go-native storage (pgstore).
 //
-// Global rules (all packages):
-//   - solaris/illumos → sunos  (Node.js only knows "sunos")
-//
 // Package-specific rules replicate per-package overrides in production's releases.js:
 //   - ffmpeg: Windows .gz → .exe  (prod releases.js: rel.ext = 'exe')
+//
+// Note: solaris/illumos are kept as-is. The live cache uses them as distinct
+// values (go.json has "illumos" and "solaris" entries). The build-classifier
+// (triplet.js) also keeps all three distinct: illumos, solaris, sunos.
 func legacyFieldBackport(pkg string, a Asset) Asset {
-	// Global OS normalization: Node.js uses "sunos" for both Solaris and Illumos.
-	if a.OS == "solaris" || a.OS == "illumos" {
-		a.OS = "sunos"
-	}
-
 	switch pkg {
 	case "ffmpeg":
 		if a.OS == "windows" {

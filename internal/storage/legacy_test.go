@@ -69,11 +69,11 @@ func TestExportLegacyDrops(t *testing.T) {
 }
 
 // TestExportLegacyTranslations verifies that legacyFieldBackport applies the
-// correct field translations for Node.js compatibility. Translations are lossy
-// in canonical terms but necessary for the legacy resolver.
+// correct field translations for Node.js compatibility.
 func TestExportLegacyTranslations(t *testing.T) {
-	t.Run("solaris_translated_to_sunos", func(t *testing.T) {
-		// Node.js only knows "sunos" for Sun/Oracle platforms.
+	t.Run("solaris_kept_as_is", func(t *testing.T) {
+		// The live cache uses "solaris" and "illumos" as distinct values (go.json).
+		// The build-classifier (triplet.js) keeps all three distinct: illumos, solaris, sunos.
 		pd := storage.PackageData{
 			Assets: []storage.Asset{
 				{Filename: "go1.20.1.solaris-amd64.tar.gz", OS: "solaris", Arch: "x86_64", Format: ".tar.gz"},
@@ -83,23 +83,23 @@ func TestExportLegacyTranslations(t *testing.T) {
 		if len(lc.Releases) != 1 {
 			t.Fatalf("releases = %d, want 1", len(lc.Releases))
 		}
-		if lc.Releases[0].OS != "sunos" {
-			t.Errorf("OS = %q, want %q", lc.Releases[0].OS, "sunos")
+		if lc.Releases[0].OS != "solaris" {
+			t.Errorf("OS = %q, want %q", lc.Releases[0].OS, "solaris")
 		}
 	})
 
-	t.Run("illumos_translated_to_sunos", func(t *testing.T) {
+	t.Run("illumos_kept_as_is", func(t *testing.T) {
 		pd := storage.PackageData{
 			Assets: []storage.Asset{
-				{Filename: "caddy_2.9.0_illumos_amd64.tar.gz", OS: "illumos", Arch: "x86_64", Format: ".tar.gz"},
+				{Filename: "go1.20.1.illumos-amd64.tar.gz", OS: "illumos", Arch: "x86_64", Format: ".tar.gz"},
 			},
 		}
-		lc, _ := storage.ExportLegacy("caddy", pd)
+		lc, _ := storage.ExportLegacy("go", pd)
 		if len(lc.Releases) != 1 {
 			t.Fatalf("releases = %d, want 1", len(lc.Releases))
 		}
-		if lc.Releases[0].OS != "sunos" {
-			t.Errorf("OS = %q, want %q", lc.Releases[0].OS, "sunos")
+		if lc.Releases[0].OS != "illumos" {
+			t.Errorf("OS = %q, want %q", lc.Releases[0].OS, "illumos")
 		}
 	})
 
@@ -191,18 +191,18 @@ func TestExportLegacyMixed(t *testing.T) {
 		t.Errorf("releases = %d, want 2 (linux + sunos)", len(lc.Releases))
 	}
 
-	// Verify the illumos → sunos translation was applied.
-	var foundSunos bool
+	// Verify illumos is kept as-is (not translated to sunos).
+	var foundIllumos bool
 	for _, r := range lc.Releases {
-		if r.OS == "sunos" {
-			foundSunos = true
-		}
 		if r.OS == "illumos" {
-			t.Error("illumos should have been translated to sunos")
+			foundIllumos = true
+		}
+		if r.OS == "sunos" {
+			t.Error("illumos should NOT be translated to sunos")
 		}
 	}
-	if !foundSunos {
-		t.Error("expected a sunos release (translated from illumos)")
+	if !foundIllumos {
+		t.Error("expected an illumos release (kept as-is)")
 	}
 }
 
