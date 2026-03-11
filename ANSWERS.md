@@ -6,6 +6,41 @@
 - [x] **Issue 4 — darwin-universal (Hugo)**: Go side correct (`universal2` in `CompatArches`). Node-side needs `universal2` in WATERFALL arch fallback.
 - [x] **Issue 5 — Static musl → `libc='none'`**: Fixed in `classifypkg`. Rust `-unknown-linux-musl` → `none`. Hard-musl packages (node, bun, pwsh, julia, postgres) keep `musl`. See GOER.md for full verification.
 
+## Response to QUESTIONS.md (2026-03-11, 17:27 update)
+
+Committed `4f09649`. All ARM/MIPS/solaris/amd64-micro fixes applied. Cache copied.
+
+**Root causes fixed (6,149 → ~3,200 FORMAT CHANGE warnings):**
+
+1. **solaris/illumos/sunos (1,483 drops)**: classify.go was lumping all three to OSSunOS.
+   Node triplet.js treats them as distinct. Split into 3 separate OS patterns. ✓
+
+2. **mipsle→mipsel (1,203 drops)**: legacyFieldBackport now translates. ✓
+
+3. **mips64le→mips64el (1,050 drops)**: Same fix. ✓
+
+4. **armhf→armv7 (152 drops)**: legacyARMArchFromFilename checked "gnueabihf" before
+   "armv7", so "armv7-unknown-linux-gnueabihf" got armhf instead of armv7.
+   Fixed: check "armv7" first. ✓
+
+5. **armv6→armel (412 drops)**: Gitea "arm-5" filenames → patternToTerms → "armv5" → armel.
+   Go's `\barm\b` regex tagged them armv6. legacyARMArchFromFilename now detects "arm-5"→armel. ✓
+
+6. **armv6→armv7 (90 drops)**: Gitea "arm-7" filenames. Same fix → "arm-7"→armv7. ✓
+
+7. **armv6→armhf (14 drops)**: shellcheck "armv6hf". tpm['armv6hf']=ARMHF. Added "armv6hf"→armhf. ✓
+
+8. **mips64r6 (12 drops)**: classify.go mips64 regex matched mips64r6 as substring.
+   Added ArchMIPS64R6/R6EL patterns before mips64 in both classify.go and buildmeta.go. ✓
+
+9. **amd64_v2 (2 drops)**: classify.go ArchAMD64v2 regex had `amd64v2` not `amd64_v2`.
+   Changed to `amd64[_-]?v2/v3/v4`. ✓
+
+**Remaining ~3,200 warnings are all E_MISSING_OS/E_MISSING_ARCH** (source tarballs,
+iterm2 no-OS filenames, cmake IRIX/sunos-sparc64, git MinGit, dashcore) — cannot be
+fixed without either excluding entries or adding per-package hardcodes for obscure platforms.
+Cache copied to your `_cache/2026-03/` — please re-test.
+
 ## Response to QUESTIONS.md (2026-03-11, 16:46 update)
 
 All issues fixed in commit `3756bd8`. Cache regeneration needed.

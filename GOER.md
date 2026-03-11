@@ -63,5 +63,16 @@ Not backporting these — Go is correct, production has bugs.
 - **atomicparsley**: `AtomicParsleyAlpine.zip` — needs per-package classifier config (hard musl).
   RESEARCHER confirmed: needs a `releases.conf` with asset pattern overrides, not generic detection.
 - **Hugo .pkg**: macOS v0.153+ only ships `.pkg`. Latent bug in both Go and production.
-- **~7,400 informational warnings**: filename/arch mismatches (armhf vs armv6, etc.) from
-  the Node build-classifier re-parsing filenames. Don't block resolution; pre-existing limitation.
+- **~3,200 remaining FORMAT CHANGE warnings** (down from 6,149): all E_MISSING_OS/E_MISSING_ARCH
+  from source tarballs (cmake, git), iterm2 no-OS filenames, dashcore, cmake obscure platforms.
+  Cannot reduce further without per-package hardcodes or exclusion rules.
+
+## Classifier fixes (2026-03-11, 17:27)
+
+- [x] solaris/illumos/sunos split into 3 separate OS patterns in classify.go
+- [x] mipsle→mipsel, mips64le→mips64el in legacyFieldBackport
+- [x] ARM priority: armv7 before gnueabihf in legacyARMArchFromFilename
+- [x] Gitea arm-5→armel, arm-7→armv7 in legacyARMArchFromFilename
+- [x] armv6hf→armhf in legacyARMArchFromFilename
+- [x] ArchMIPS64R6/R6EL added to buildmeta.go + classify.go (before mips64)
+- [x] amd64[_-]?v2/v3/v4 regex in classify.go (matches underscore form)
