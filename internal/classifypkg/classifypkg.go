@@ -687,8 +687,14 @@ func classifyGolang(d *rawcache.Dir) ([]storage.Asset, error) {
 			continue
 		}
 
-		// Strip "go" prefix from version: "go1.24.1" → "1.24.1"
+		// Strip "go" prefix and pad to 3-part version: "go1.10" → "1.10.0"
 		version := strings.TrimPrefix(rel.Version, "go")
+		parts := strings.SplitN(version, ".", 3)
+		for len(parts) < 3 {
+			parts = append(parts, "0")
+		}
+		version = strings.Join(parts, ".")
+
 		channel := "stable"
 		if !rel.Stable {
 			channel = "beta"
@@ -699,7 +705,7 @@ func classifyGolang(d *rawcache.Dir) ([]storage.Asset, error) {
 				continue
 			}
 			// Skip bootstrap and odd builds.
-			if strings.Contains(f.Filename, "bootstrap") {
+			if strings.Contains(f.Filename, "bootstrap") || strings.Contains(f.Filename, "-arm6.") {
 				continue
 			}
 

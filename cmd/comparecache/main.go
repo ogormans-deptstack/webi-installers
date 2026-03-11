@@ -495,8 +495,8 @@ func isLiveNoise(name string) bool {
 		}
 	}
 
-	// Source tarballs (e.g. gitea-src-1.25.4.tar.gz, caddy_2.10.0_src.tar.gz).
-	if strings.Contains(lower, "-src-") || strings.Contains(lower, "_src.") || strings.HasPrefix(lower, "src-") {
+	// Source tarballs (e.g. gitea-src-1.25.4.tar.gz, caddy_2.10.0_src.tar.gz, go1.26.1.src.tar.gz).
+	if strings.Contains(lower, "-src-") || strings.Contains(lower, "_src.") || strings.Contains(lower, ".src.") || strings.HasPrefix(lower, "src-") {
 		return true
 	}
 
@@ -555,6 +555,16 @@ func normalizeVersionFunc(pkg string) func(string) string {
 				return "0." + v[1:] + ".0"
 			}
 			return v
+		}
+	case "go":
+		return func(v string) string {
+			// Go: go1.10 → 1.10.0 (pad to 3 parts)
+			v = strings.TrimPrefix(v, "go")
+			parts := strings.SplitN(v, ".", 3)
+			for len(parts) < 3 {
+				parts = append(parts, "0")
+			}
+			return strings.Join(parts, ".")
 		}
 	default:
 		return func(v string) string { return v }
