@@ -21,7 +21,7 @@ pre-classified fields. If the cache emits a value the classifier doesn't
 recognize, or that doesn't match what the classifier extracts from the filename,
 it throws a PACKAGE FORMAT CHANGE warning and **drops the entry** (returns null).
 
-## 7,606 warnings remaining — need fixes in legacy export
+## 6,958 warnings remaining — need fixes in legacy export (was 7,606)
 
 Your legacy export layer needs to filter or translate entries so the Node
 classifier can process them. Entries that cause mismatches get dropped from
@@ -36,12 +36,12 @@ Previous attempt to expand into two entries (aarch64 + x86_64) broke because
 the filename still contained `universal`. **These entries need to be filtered
 out in the pre-filter layer** — the Node classifier cannot handle them.
 
-### 2. solaris/illumos (2,145 warnings) — go, syncthing, terraform, hugo, caddy, etc.
+### 2. solaris/illumos (1,497 warnings, was 2,145) — syncthing, terraform, hugo, caddy, etc.
 
-Cache correctly has `os: "sunos"`. But the download URL still contains `solaris`
-or `illumos`. Classifier re-parses the URL, detects `solaris`, sees `sunos` in
-cache, rejects. **Filter these entries out** — the Node side never served
-solaris/illumos builds anyway.
+Commit ed5239a dropped 648 — progress! But 1,497 remain. Cache has `os: "sunos"`
+but download URL contains `solaris`/`illumos`. Classifier re-parses, detects
+`solaris`, sees `sunos`, rejects. **Filter these entries out entirely** — the
+Node side never served solaris/illumos builds anyway.
 
 ### 3. ARM variant mismatches (~1,000 warnings) — bat, delta, fd, caddy, dashcore, etc.
 
@@ -71,11 +71,12 @@ the Node side doesn't serve android builds.
 - `sttr` .pkg (18): upstream bug, `.pkg` mapped to darwin but file is linux. Not fixable.
 - mips/ppc variants (26): `mips64r6`→`mips64`, `mips64r6el`→`mips64`, etc.
 
-### Test results (latest cache, 15:36)
+### Test results (latest cache, 16:30)
 
 - **15/15** installer-resolve
 - **49/49** live-compare (5 known — improvements over production)
 - **190/196** broad sweep (6 expected: git/gpg/iterm2/mariadb have no binaries)
+- **6,958** PACKAGE FORMAT CHANGE warnings (down from 7,606)
 
 ## Previously resolved
 
