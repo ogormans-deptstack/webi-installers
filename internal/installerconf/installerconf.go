@@ -98,6 +98,11 @@ type Conf struct {
 	// variant detection logic lives in Go code per-package.
 	Variants []string
 
+	// AliasOf names another package that this one mirrors.
+	// When set, the package has no releases of its own — it shares
+	// the cache output of the named target (e.g. dashd → dashcore).
+	AliasOf string
+
 	// Extra holds any unrecognized keys for forward compatibility.
 	Extra map[string]string
 }
@@ -153,6 +158,7 @@ func Read(path string) (*Conf, error) {
 	}
 
 	c.AssetFilter = raw["asset_filter"]
+	c.AliasOf = raw["alias_of"]
 
 	if v := raw["variants"]; v != "" {
 		c.Variants = strings.Fields(v)
@@ -164,7 +170,7 @@ func Read(path string) (*Conf, error) {
 		"base_url": true, "url": true,
 		"tag_prefix": true, "version_prefix": true, "version_prefixes": true,
 		"exclude": true, "asset_exclude": true, "asset_filter": true,
-		"variants": true,
+		"variants": true, "alias_of": true,
 	}
 	for k, v := range raw {
 		if !known[k] {

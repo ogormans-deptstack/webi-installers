@@ -143,6 +143,27 @@ func atomicWrite(path string, data []byte) error {
 	return nil
 }
 
+// LinkAlias creates symlinks so that alias resolves to the same cache
+// files as target: alias.json → target.json, alias.updated.txt → target.updated.txt.
+func (s *Store) LinkAlias(alias, target string) error {
+	dir := filepath.Join(s.root, monthDir(time.Now()))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("fsstore: mkdir: %w", err)
+	}
+
+	for _, ext := range []string{".json", ".updated.txt"} {
+		link := filepath.Join(dir, alias+ext)
+		dest := target + ext // relative symlink within same dir
+
+		// Remove existing link/file so we can recreate it.
+		os.Remove(link)
+		if err := os.Symlink(dest, link); err != nil {
+			return fmt.Errorf("fsstore: symlink %s → %s: %w", alias+ext, dest, err)
+		}
+	}
+	return nil
+}
+
 // parseTimestamp parses the "seconds.millis" format from .updated.txt files.
 func parseTimestamp(s string) time.Time {
 	f, err := strconv.ParseFloat(s, 64)

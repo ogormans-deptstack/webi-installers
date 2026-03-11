@@ -132,13 +132,22 @@ func (wc *WebiCache) Run(filterPkgs []string) {
 	log.Printf("refreshing %d packages", len(packages))
 	runStart := time.Now()
 
+	var aliases []pkgConf
 	for _, pkg := range packages {
-		if alias := pkg.conf.Extra["alias_of"]; alias != "" {
+		if pkg.conf.AliasOf != "" {
+			aliases = append(aliases, pkg)
 			continue
 		}
 
 		if err := wc.refreshPackage(ctx, pkg); err != nil {
 			log.Printf("  ERROR %s: %v", pkg.name, err)
+		}
+	}
+
+	// Create symlinks for aliases after all targets are written.
+	for _, pkg := range aliases {
+		if err := wc.Store.LinkAlias(pkg.name, pkg.conf.AliasOf); err != nil {
+			log.Printf("  ERROR alias %s → %s: %v", pkg.name, pkg.conf.AliasOf, err)
 		}
 	}
 
