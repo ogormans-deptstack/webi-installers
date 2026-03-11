@@ -26,7 +26,7 @@ type Entry struct {
 }
 
 var linkRe = regexp.MustCompile(`href="(https://iterm2\.com/downloads/[^"]*\.zip)"`)
-var versionRe = regexp.MustCompile(`iTerm2[-_]v?(\d+(?:_\d+)*)(?:[-_]?(?:beta|preview)[-_]?(\d*))?\.zip`)
+var versionRe = regexp.MustCompile(`iTerm2[-_]v?(\d+(?:_\d+)*)(?:[-_]?(beta|preview)[-_]?(\d*))?\.zip`)
 
 // Fetch retrieves iTerm2 releases by scraping the downloads page.
 //
@@ -62,6 +62,7 @@ func Fetch(ctx context.Context, client *http.Client) iter.Seq2[[]Entry, error] {
 
 		matches := linkRe.FindAllStringSubmatch(string(body), -1)
 		var entries []Entry
+		seen := make(map[string]bool)
 		for _, m := range matches {
 			link := m[1]
 			// Only include iTerm2 v3+ downloads.
@@ -82,10 +83,19 @@ func Fetch(ctx context.Context, client *http.Client) iter.Seq2[[]Entry, error] {
 			vm := versionRe.FindStringSubmatch(link)
 			if vm != nil {
 				entry.Version = strings.ReplaceAll(vm[1], "_", ".")
+				// vm[2] = "beta" or "preview", vm[3] = optional number
 				if vm[2] != "" {
-					entry.Version += "-beta" + vm[2]
+					entry.Version += "-" + vm[2] + vm[3]
 				}
 			}
+
+			// The downloads page has duplicate links for some betas
+			// (e.g. iTerm2-3_5_1beta1.zip and iTerm2-3_5_1_beta1.zip).
+			// Keep the first URL encountered per version.
+			if seen[entry.Version] {
+				continue
+			}
+			seen[entry.Version] = true
 
 			entries = append(entries, entry)
 		}
