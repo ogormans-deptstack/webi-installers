@@ -106,9 +106,11 @@ var archPatterns = []struct {
 	// Universal/fat binaries before specific arches.
 	{buildmeta.ArchUniversal2, regexp.MustCompile(`(?i)` + b + `(?:universal2?|fat)` + bEnd)},
 	// amd64 micro-levels before baseline — "amd64v3" must not fall through to amd64.
-	{buildmeta.ArchAMD64v4, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v4|amd64[_-]?v4|v4-amd64)`)},
-	{buildmeta.ArchAMD64v3, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v3|amd64[_-]?v3|v3-amd64)`)},
-	{buildmeta.ArchAMD64v2, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v2|amd64[_-]?v2|v2-amd64)`)},
+	// amd64_?vN: underscore optional but no dash — dash is ambiguous with version numbers
+	// (e.g. syncthing "amd64-v2.0.5" where v2 is the release version, not an arch level).
+	{buildmeta.ArchAMD64v4, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v4|amd64_?v4|v4-amd64)`)},
+	{buildmeta.ArchAMD64v3, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v3|amd64_?v3|v3-amd64)`)},
+	{buildmeta.ArchAMD64v2, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v2|amd64_?v2|v2-amd64)`)},
 	// amd64 baseline before x86 — "x86_64" must not match as x86.
 	{buildmeta.ArchAMD64, regexp.MustCompile(`(?i)(?:x86[_-]64|amd64|x64|64-?bit)`)},
 	// arm64 before armv7/armv6 — "aarch64" must not match as arm.
