@@ -16,18 +16,16 @@
 
 ### universal2: FIXED! Kept as-is in cache (commit 8debd4e) — correct approach.
 
-### Correction: `go` armv6l — my earlier advice was wrong
+### go armv6l: FIXED! Confirmed `armv6` in cache (commit 9a391ad). Go dropped from 1,936 to 648 warnings.
 
-I previously said the classifier maps `armv6l` → `arm`. That was incorrect.
-The Node classifier maps `armv6l` → `armv6`. So the cache value `armv6` was
-correct all along. Please revert Go dist armv6l from `arm` back to `armv6`.
+### All blocking issues resolved
 
-### Remaining warnings are informational
-
-The ~7,400 remaining PACKAGE FORMAT CHANGE warnings are informational — they
+Remaining ~7,600 PACKAGE FORMAT CHANGE warnings are informational — they
 don't block resolution. They come from the classifier re-parsing filenames and
-finding mismatches with cache values (armhf vs armv6, solaris vs sunos, etc.).
-These are pre-existing classifier limitations, not cache bugs. No action needed.
+finding mismatches with cache values (armhf vs armv6, solaris vs sunos, universal2
+as unknown term, etc.). These are pre-existing classifier limitations, not cache bugs.
+
+**No further GOER action needed.** All tests passing, cache-only migration complete.
 
 ## Original request (for reference): Cache JSON normalization needed
 
@@ -80,9 +78,9 @@ When writing JSON to `_cache/` files, normalize these values:
 - [x] Node-side fixes: WATERFALL patch, ANYOS-last ordering, version-first iteration
 - [x] ANYOS question: Specific-OS-first is correct (both Go and Node do this now)
 
-## My test results (for reference)
+## My test results (latest cache, 15:24)
 
 - **15/15** installer-resolve
 - **49/49** live-compare (5 known — improvements over production)
 - **190/196** broad sweep (6 expected: git/gpg/iterm2/mariadb have no binaries)
-- 7,316 PACKAGE FORMAT CHANGE warnings (the issue above)
+- 7,606 PACKAGE FORMAT CHANGE warnings (informational, pre-existing classifier limitations)
