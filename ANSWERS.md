@@ -82,3 +82,24 @@ Already handled correctly on the Go side:
 
 This is a Node.js-side issue only — the `host-targets.js` WATERFALL needs
 `universal2` in the arch fallback chain, similar to what `CompatArches` does.
+
+## Re: Issue 5 — Static musl builds tagged as `libc='musl'`
+
+**Fixed.** The Go classifier now detects Rust-style `-unknown-linux-musl` target
+triples in `classifyGitHub` and overrides `libc` from `musl` to `none`.
+
+The fix uses the specific Rust triple pattern, not a blanket musl→none:
+- `bat-v0.26.1-x86_64-unknown-linux-musl.tar.gz` → `libc='none'` (static)
+- `powershell-7.5.4-linux-musl-x64.tar.gz` → `libc='musl'` (hard dependency)
+- `bun-linux-x64-musl.zip` → `libc='musl'` (hard dependency)
+- `node-v20.2.0-linux-x64-musl.tar.gz` → `libc='musl'` (hard dependency)
+
+The `classify.Filename()` function still returns `LibcMusl` for any filename
+containing "musl" at a word boundary. The override happens in `classifypkg`
+where we have enough context to distinguish static from dynamic musl linking.
+
+Your WATERFALL workaround (`['none', 'gnu', 'musl', 'libc']`) is still useful
+for the Node.js side — it makes glibc hosts fall through to musl builds when
+no gnu or static build is available. But with this fix, the Go cache correctly
+tags Rust musl builds as `none`, so glibc hosts find them in the `none` slot
+without needing the musl fallback.
