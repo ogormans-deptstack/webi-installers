@@ -549,10 +549,10 @@ func classifyGitTag(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 			filename = repoName + "-" + entry.GitTag
 		} else if len(entry.Date) >= 19 {
 			// Tagless repo (HEAD of master/main): synthesize a date-based
-			// version like Node.js does: "2023.10.10-18.42.21"
-			version = strings.ReplaceAll(entry.Date[:10], "-", ".") +
-				"-" + strings.ReplaceAll(entry.Date[11:19], ":", ".")
-			filename = repoName + "-v" + version
+			// version prefixed with HEAD so it doesn't sort ahead of
+			// real semver tags (e.g. HEAD-2023.10.10 vs v1.2).
+			version = "HEAD-" + strings.ReplaceAll(entry.Date[:10], "-", ".")
+			filename = repoName + "-" + version
 		} else {
 			continue
 		}
