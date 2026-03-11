@@ -18,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
@@ -62,6 +63,7 @@ func main() {
 	diffsOnly := flag.Bool("diffs", false, "only show packages with asset differences (skip matches)")
 	latest := flag.Bool("latest", false, "only compare latest version in each cache")
 	windowed := flag.Bool("windowed", false, "limit Go versions to the Node.js version range (2nd to 2nd-to-last)")
+	sample := flag.Int("sample", 0, "pick N extra random packages beyond any named ones")
 	flag.Parse()
 	filterPkgs := flag.Args()
 
@@ -83,18 +85,39 @@ func main() {
 	// Discover all packages across both caches.
 	discoverStart := time.Now()
 	allPkgs := discoverPackages(livePath, goPath)
-	if len(filterPkgs) > 0 {
+	if len(filterPkgs) > 0 || *sample > 0 {
 		nameSet := make(map[string]bool, len(filterPkgs))
 		for _, n := range filterPkgs {
 			nameSet[n] = true
 		}
-		var filtered []string
+
+		var selected []string
+		var pool []string
 		for _, p := range allPkgs {
 			if nameSet[p] {
-				filtered = append(filtered, p)
+				selected = append(selected, p)
+			} else {
+				pool = append(pool, p)
 			}
 		}
-		allPkgs = filtered
+
+		// Pick random extras from the remaining pool.
+		if *sample > 0 && len(pool) > 0 {
+			rand.Shuffle(len(pool), func(i, j int) {
+				pool[i], pool[j] = pool[j], pool[i]
+			})
+			n := *sample
+			if n > len(pool) {
+				n = len(pool)
+			}
+			extras := pool[:n]
+			sort.Strings(extras)
+			selected = append(selected, extras...)
+			log.Printf("sampled %d extra: %s", n, strings.Join(extras, ", "))
+		}
+
+		sort.Strings(selected)
+		allPkgs = selected
 	}
 	log.Printf("discovered %d packages in %s", len(allPkgs), time.Since(discoverStart))
 
