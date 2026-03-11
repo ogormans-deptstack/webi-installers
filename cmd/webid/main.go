@@ -21,11 +21,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/webinstall/webi-installers/internal/buildmeta"
+	"github.com/webinstall/webi-installers/internal/lexver"
 	"github.com/webinstall/webi-installers/internal/render"
 	"github.com/webinstall/webi-installers/internal/resolve"
 	"github.com/webinstall/webi-installers/internal/resolver"
@@ -276,11 +278,14 @@ func (s *server) handleReleasesAPI(w http.ResponseWriter, r *http.Request) {
 	// Filter matching releases.
 	filtered := filterDists(pc.dists, osStr, archStr, libcStr, channelStr, version, formats, lts, limit)
 
+	// Sort newest-first (descending by version).
+	sortDistsDescending(filtered)
+
 	switch format {
 	case "json":
 		s.serveJSON(w, r, pc, filtered)
 	case "tab":
-		s.serveTab(w, filtered)
+		s.serveTab(w, r, filtered)
 	default:
 		http.Error(w, "unsupported format: "+format, http.StatusBadRequest)
 	}
@@ -401,55 +406,82 @@ func filterDists(dists []resolve.Dist, osStr, archStr, libcStr, channel, version
 }
 
 // legacyRelease matches the Node.js JSON response format.
+// Production returns a bare JSON array of these objects.
 type legacyRelease struct {
 	Name     string `json:"name"`
 	Version  string `json:"version"`
-	LTS      any    `json:"lts"`
+	LTS      bool   `json:"lts"`
 	Channel  string `json:"channel"`
 	Date     string `json:"date"`
 	OS       string `json:"os"`
 	Arch     string `json:"arch"`
-	Libc     string `json:"libc,omitempty"`
 	Ext      string `json:"ext"`
 	Download string `json:"download"`
-	Comment  string `json:"comment,omitempty"`
+	Libc     string `json:"libc"`
 }
 
-type legacyReleasesResponse struct {
-	Releases []legacyRelease `json:"releases"`
-	OSes     []string        `json:"oses,omitempty"`
-	Arches   []string        `json:"arches,omitempty"`
-	Libcs    []string        `json:"libcs,omitempty"`
-	Formats  []string        `json:"formats,omitempty"`
+// legacyOS maps Go canonical OS names to Node.js legacy names.
+func legacyOS(s string) string {
+	switch s {
+	case "darwin":
+		return "macos"
+	default:
+		return s
+	}
+}
+
+// legacyArch maps Go canonical arch names to Node.js legacy names.
+func legacyArch(s string) string {
+	switch s {
+	case "x86_64":
+		return "amd64"
+	case "aarch64":
+		return "arm64"
+	default:
+		return s
+	}
+}
+
+// legacyExt strips the leading "." from format strings.
+func legacyExt(s string) string {
+	return strings.TrimPrefix(s, ".")
+}
+
+// legacyVersion strips the leading "v" from version strings.
+func legacyVersion(s string) string {
+	return strings.TrimPrefix(s, "v")
+}
+
+// legacyLibc returns "none" for empty libc values.
+func legacyLibc(s string) string {
+	if s == "" {
+		return "none"
+	}
+	return s
 }
 
 func distsToLegacy(dists []resolve.Dist) []legacyRelease {
 	releases := make([]legacyRelease, len(dists))
 	for i, d := range dists {
-		var lts any = d.LTS
 		releases[i] = legacyRelease{
 			Name:     d.Filename,
-			Version:  d.Version,
-			LTS:      lts,
+			Version:  legacyVersion(d.Version),
+			LTS:      d.LTS,
 			Channel:  d.Channel,
 			Date:     d.Date,
-			OS:       d.OS,
-			Arch:     d.Arch,
-			Libc:     d.Libc,
-			Ext:      d.Format,
+			OS:       legacyOS(d.OS),
+			Arch:     legacyArch(d.Arch),
+			Ext:      legacyExt(d.Format),
 			Download: d.Download,
+			Libc:     legacyLibc(d.Libc),
 		}
 	}
 	return releases
 }
 
 func (s *server) serveJSON(w http.ResponseWriter, r *http.Request, pc *packageCache, filtered []resolve.Dist) {
-	resp := legacyReleasesResponse{
-		Releases: distsToLegacy(filtered),
-		OSes:     pc.catalog.OSes,
-		Arches:   pc.catalog.Arches,
-		Formats:  pc.catalog.Formats,
-	}
+	// Production returns a bare JSON array, not wrapped in an object.
+	releases := distsToLegacy(filtered)
 
 	w.Header().Set("Content-Type", "application/json")
 
@@ -457,24 +489,58 @@ func (s *server) serveJSON(w http.ResponseWriter, r *http.Request, pc *packageCa
 	if pretty == "true" || pretty == "1" {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		enc.Encode(resp)
+		enc.Encode(releases)
 	} else {
-		json.NewEncoder(w).Encode(resp)
+		json.NewEncoder(w).Encode(releases)
 	}
 }
 
-func (s *server) serveTab(w http.ResponseWriter, filtered []resolve.Dist) {
+func (s *server) serveTab(w http.ResponseWriter, r *http.Request, filtered []resolve.Dist) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-	// Tab format matches Node.js: version,lts,channel,date,os,arch,ext,-,download,name,comment
-	for _, d := range filtered {
-		lts := "false"
-		if d.LTS {
-			lts = "true"
-		}
-		fmt.Fprintf(w, "%s,%s,%s,%s,%s,%s,%s,-,%s,%s,\n",
-			d.Version, lts, d.Channel, d.Date, d.OS, d.Arch, d.Format, d.Download, d.Filename)
+	// Production only shows header row with ?pretty=true.
+	pretty := r.URL.Query().Get("pretty")
+	if pretty != "" && pretty != "false" {
+		fmt.Fprintln(w, "VERSION\tLTS\tCHANNEL\tRELEASE_DATE\tOS\tARCH\tEXT\tHASH\tURL\t_\tLIBC")
 	}
+
+	// Tab format matches Node.js production:
+	// version \t lts \t channel \t date \t os \t arch \t ext \t hash \t download \t comment \t libc
+	for _, d := range filtered {
+		lts := "-"
+		if d.LTS {
+			lts = "lts"
+		}
+		channel := d.Channel
+		if channel == "" {
+			channel = "-"
+		}
+		date := d.Date
+		if date == "" {
+			date = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t-\t%s\t\t%s\n",
+			legacyVersion(d.Version),
+			lts,
+			channel,
+			date,
+			legacyOS(d.OS),
+			legacyArch(d.Arch),
+			legacyExt(d.Format),
+			d.Download,
+			legacyLibc(d.Libc),
+		)
+	}
+}
+
+// sortDistsDescending sorts dists newest-first by version.
+func sortDistsDescending(dists []resolve.Dist) {
+	slices.SortStableFunc(dists, func(a, b resolve.Dist) int {
+		va := lexver.Parse(strings.TrimPrefix(a.Version, "v"))
+		vb := lexver.Parse(strings.TrimPrefix(b.Version, "v"))
+		// Descending: reverse the comparison.
+		return lexver.Compare(vb, va)
+	})
 }
 
 // serveEmptyReleases returns an empty release list for selfhosted packages.
@@ -482,9 +548,8 @@ func (s *server) serveEmptyReleases(w http.ResponseWriter, format string) {
 	switch format {
 	case "json":
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(legacyReleasesResponse{
-			Releases: []legacyRelease{},
-		})
+		// Production returns an empty array.
+		json.NewEncoder(w).Encode([]legacyRelease{})
 	case "tab":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	}
