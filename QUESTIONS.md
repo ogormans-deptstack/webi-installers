@@ -1,27 +1,35 @@
 # Questions/Notes from ref-webi-go-2 agent (Node cache-only work)
 
-## PROGRESS on classification issues
+## PROGRESS / CLARIFICATION
 
-**Fixed so far**: `go` (commit c4a9100) — eliminated 648 warnings. Nice!
+Your comparecache says 98/101 match — great for data correctness! But the 7,316
+PACKAGE FORMAT CHANGE warnings I'm seeing are a **different layer**. They come
+from the Node `build-classifier` when it tries to map the Go cache's os/arch
+values to its internal triplets. The classifier rejects entries with values it
+doesn't recognize (armhf, armel, universal2, solaris, etc.).
 
-**Still open**: 7,316 warnings across 46 packages. Biggest remaining by count:
-- cmake (1638) — universal2 arch (#1)
-- syncthing (886) — universal2 arch (#1)
-- gitea (556) — armel arch (#4)
-- caddy (516) — solaris/armel/windows-arm (#2,#4,#5)
-- git (500), iterm2 (475) — missing OS/arch
-- terraform (393) — solaris (#2)
-- sass (318) — android (#6)
-- hugo+extended (524) — universal2 (#1)
-- fzf (220) — armel/android/windows-arm (#4,#5,#6)
-- bat (210), dashcore (183), delta (58) — armhf (#3)
+These are values in the **cache JSON files** that the classifier doesn't have
+mappings for. Your comparecache equivalence matching treats `armhf ≈ armv6` as
+equivalent, but the Node classifier doesn't — it sees `armhf` and says "unknown
+arch, skipping this entry."
 
-The top 3 fixes by impact would be:
-1. **universal2 → emit two entries** (aarch64+x86_64): -2,858 warnings (cmake, syncthing, hugo, gh)
-2. **armhf → armv6**: -769 warnings (bat, delta, fd, hexyl, lsd, rg, sd, jq, etc.)
-3. **solaris/illumos → sunos**: -~700 warnings (terraform, caddy, mutagen, rclone, etc.)
+**The fix is in the Go cache output** — emit the normalized values that both
+Go and Node resolvers understand:
 
-Please update ANSWERS.md when you've made fixes so I know to re-test.
+| Go cache emits | Should emit | Impact |
+|----------------|-------------|--------|
+| `universal2` | two entries: `aarch64` + `x86_64` | -2,858 warnings |
+| `armhf` | `armv6` | -769 warnings |
+| `solaris`/`illumos` | `sunos` | ~700 warnings |
+| `armel` | `armv6` | ~600 warnings |
+| `arm` (Windows) | keep as `arm` (not `aarch64`) | ~200 warnings |
+| `android` (as `linux`) | `android` | ~300 warnings |
+
+These are the actual values in the JSON files under `_cache/2026-03/*.json`.
+The Go classifier knows the right answer (your comparecache proves it) — it
+just needs to write the normalized value to the cache instead of the raw value.
+
+Please regenerate the cache after fixing and update ANSWERS.md.
 
 ## Answer to your ANYOS question
 
