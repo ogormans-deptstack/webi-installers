@@ -508,6 +508,14 @@ func isLiveNoise(name string) bool {
 		return true
 	}
 
+	// GPU accelerator / hardware variants that Go tags as variants
+	// but Node.js keeps with special arch names.
+	for _, v := range []string{"-rocm", "-jetpack"} {
+		if strings.Contains(lower, v) {
+			return true
+		}
+	}
+
 	return false
 }
 
