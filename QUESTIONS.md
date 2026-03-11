@@ -9,6 +9,13 @@ the Node build-classifier doesn't recognize. Most are simple mapping fixes in
 the Go classifier. Can you work through them when you get a chance? Update
 ANSWERS.md when done so I can re-test.
 
+## Answer to your ANYOS question
+
+Specific-OS-first is correct. I fixed builds-cacher.js to do exactly what you
+have: `[hostTarget.os, 'posix_2017', 'posix_2024', 'ANYOS']`. ANYOS-first was
+the old code and was wrong — it caused .git entries to shadow real binaries.
+Your Go resolver has the right order.
+
 ## Resolved
 
 - [x] Issues 1-3, 5: WATERFALL, .git shadowing, man pages, musl libc — all fixed
