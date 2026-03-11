@@ -72,16 +72,20 @@ func ImportLegacy(lc LegacyCache) PackageData {
 // legacyFormats is the set of formats the Node.js server recognizes.
 // Assets with formats not in this set are filtered out of legacy exports.
 var legacyFormats = map[string]bool{
-	".zip":    true,
-	".tar.gz": true,
-	".tar.xz": true,
-	".tar":    true,
-	".xz":     true,
-	".pkg":    true,
-	".msi":    true,
-	".exe":    true,
-	".dmg":    true,
-	"git":     true,
+	".zip":     true,
+	".tar.gz":  true,
+	".tar.xz":  true,
+	".tar.zst": true,
+	".tar.bz2": true,
+	".tar":     true,
+	".xz":      true,
+	".7z":      true,
+	".pkg":     true,
+	".msi":     true,
+	".exe":     true,
+	".exe.xz":  true,
+	".dmg":     true,
+	"git":      true,
 }
 
 // ExportLegacy converts PackageData to the LegacyCache wire format.

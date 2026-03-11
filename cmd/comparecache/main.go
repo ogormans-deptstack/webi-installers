@@ -287,7 +287,7 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 	var goVF map[string]map[string]bool
 	var goVersions []string
 	if goCache != nil {
-		goVF, goVersions = extractVersionFiles(goCache, nil)
+		goVF, goVersions = extractVersionFiles(goCache, notNoise)
 		d.VersionsGo = goVersions
 		d.GoCount = len(goCache.Releases)
 	}
@@ -494,6 +494,17 @@ func isLiveNoise(name string) bool {
 
 	// Source tarballs (e.g. gitea-src-1.25.4.tar.gz, caddy_2.10.0_src.tar.gz).
 	if strings.Contains(lower, "-src-") || strings.Contains(lower, "_src.") || strings.HasPrefix(lower, "src-") {
+		return true
+	}
+
+	// Docs tarballs (e.g. gitea-docs-1.22.3.tar.gz).
+	if strings.Contains(lower, "-docs-") {
+		return true
+	}
+
+	// Bare executables without any extension — typically legacy shell scripts
+	// uploaded alongside proper archives (e.g. kubectx, kubens).
+	if !strings.Contains(name, ".") {
 		return true
 	}
 
