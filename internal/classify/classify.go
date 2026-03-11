@@ -192,6 +192,8 @@ var formatSuffixes = []struct {
 	{".rpm", buildmeta.FormatRPM},
 	{".snap", buildmeta.FormatSnap},
 	{".appx", buildmeta.FormatAppx},
+	{".apk", buildmeta.FormatAPK},
+	{".AppImage", buildmeta.FormatAppImage},
 	{".pkg", buildmeta.FormatPkg},
 }
 

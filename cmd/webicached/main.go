@@ -329,8 +329,6 @@ func (wc *WebiCache) refreshPackage(ctx context.Context, pkg pkgConf) error {
 	if err != nil {
 		return fmt.Errorf("classify: %w", err)
 	}
-	// Legacy backport: translate canonical values to what Node.js expects.
-	classifypkg.LegacyBackport(name, assets)
 	classifyDur := time.Since(classifyStart)
 
 	// Step 3: Write to fsstore.

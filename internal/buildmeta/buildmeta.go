@@ -91,8 +91,10 @@ const (
 	Format7z     Format = ".7z"
 	FormatDeb    Format = ".deb"
 	FormatRPM    Format = ".rpm"
-	FormatSnap   Format = ".snap"
-	FormatAppx   Format = ".appx"
+	FormatSnap     Format = ".snap"
+	FormatAppx     Format = ".appx"
+	FormatAPK      Format = ".apk"
+	FormatAppImage Format = ".AppImage"
 	FormatSh     Format = ".sh"
 	FormatGit    Format = ".git"
 )

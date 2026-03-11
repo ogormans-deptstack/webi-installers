@@ -28,6 +28,12 @@ type LegacyCache struct {
 	Download string        `json:"download"`
 }
 
+// LegacyDropStats reports how many assets were excluded during ExportLegacy.
+type LegacyDropStats struct {
+	Variants int // dropped: has build variant tags (e.g. rocm, installer, fxdependent)
+	Formats  int // dropped: format not recognized by the Node.js server
+}
+
 // ToAsset converts a LegacyAsset to the internal Asset type.
 func (la LegacyAsset) ToAsset() Asset {
 	return Asset{
@@ -44,8 +50,10 @@ func (la LegacyAsset) ToAsset() Asset {
 	}
 }
 
-// ToLegacy converts an Asset to the LegacyAsset wire format.
-func (a Asset) ToLegacy() LegacyAsset {
+// toLegacy converts an Asset to the LegacyAsset wire format.
+// It applies per-package field translations for Node.js compatibility.
+func (a Asset) toLegacy(pkg string) LegacyAsset {
+	a = legacyFieldBackport(pkg, a)
 	return LegacyAsset{
 		Name:     a.Filename,
 		Version:  a.Version,
@@ -58,6 +66,32 @@ func (a Asset) ToLegacy() LegacyAsset {
 		Ext:      a.Format,
 		Download: a.Download,
 	}
+}
+
+// legacyFieldBackport translates canonical classifier field values to the
+// values the legacy Node.js resolver expects. This is called at export time
+// only — the canonical values are preserved in Go-native storage (pgstore).
+//
+// Rules are package-specific because they replicate per-package overrides
+// that production's releases.js files apply:
+//
+//   - go:    armv6 → arm  (Go dist API uses bare "arm"; prod keeps it as-is)
+//   - ffmpeg: Windows .gz → .exe  (prod releases.js: rel.ext = 'exe')
+func legacyFieldBackport(pkg string, a Asset) Asset {
+	switch pkg {
+	case "go":
+		if a.Arch == "armv6" {
+			a.Arch = "arm"
+		}
+	case "ffmpeg":
+		if a.OS == "windows" {
+			switch a.Format {
+			case ".gz", "":
+				a.Format = ".exe"
+			}
+		}
+	}
+	return a
 }
 
 // ImportLegacy converts a LegacyCache to PackageData.
@@ -90,24 +124,35 @@ var legacyFormats = map[string]bool{
 	"git":      true,
 }
 
-// ExportLegacy converts PackageData to the LegacyCache wire format.
-// Assets with non-empty Variants or formats the Node.js server doesn't
-// handle are excluded.
-func ExportLegacy(pd PackageData) LegacyCache {
+// ExportLegacy converts canonical PackageData to the LegacyCache wire format.
+//
+// The pkg name is used to apply per-package field translations before export
+// (see legacyFieldBackport). Assets are excluded when:
+//   - Variants is non-empty (Node.js has no variant logic)
+//   - Format is non-empty and not in the Node.js recognized set
+//
+// Dropped counts are returned in LegacyDropStats for logging.
+func ExportLegacy(pkg string, pd PackageData) (LegacyCache, LegacyDropStats) {
 	var releases []LegacyAsset
+	var stats LegacyDropStats
+
 	for _, a := range pd.Assets {
 		// Skip variant builds — Node.js doesn't have variant logic.
 		if len(a.Variants) > 0 {
+			stats.Variants++
 			continue
 		}
+		// Apply per-package legacy field translations before format check.
+		a = legacyFieldBackport(pkg, a)
 		// Skip formats Node.js doesn't recognize.
 		if a.Format != "" && !legacyFormats[a.Format] {
+			stats.Formats++
 			continue
 		}
-		releases = append(releases, a.ToLegacy())
+		releases = append(releases, a.toLegacy(pkg))
 	}
 	if releases == nil {
 		releases = []LegacyAsset{}
 	}
-	return LegacyCache{Releases: releases}
+	return LegacyCache{Releases: releases}, stats
 }

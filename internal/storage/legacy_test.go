@@ -73,7 +73,7 @@ func TestDecodeLegacyJSON(t *testing.T) {
 	}
 
 	// Round-trip: export back to legacy and verify JSON shape.
-	lc2 := storage.ExportLegacy(pd)
+	lc2, _ := storage.ExportLegacy("aliasman", pd)
 	data, _ := json.MarshalIndent(lc2, "", "  ")
 	var lc3 storage.LegacyCache
 	json.Unmarshal(data, &lc3)

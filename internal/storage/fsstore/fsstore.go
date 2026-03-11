@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -125,7 +126,13 @@ func (tx *refreshTx) Commit(_ context.Context) error {
 	}
 
 	// Encode via legacy format (Node.js compat: "releases", "name", "ext").
-	lc := storage.ExportLegacy(storage.PackageData{Assets: tx.assets})
+	// ExportLegacy applies per-package field backports and drops assets that
+	// can't be expressed in the legacy format (variants, unsupported formats).
+	lc, drops := storage.ExportLegacy(tx.pkg, storage.PackageData{Assets: tx.assets})
+	if drops.Variants > 0 || drops.Formats > 0 {
+		log.Printf("  %s: legacy export dropped %d variant assets, %d unsupported-format assets",
+			tx.pkg, drops.Variants, drops.Formats)
+	}
 
 	data, err := json.MarshalIndent(lc, "", "  ")
 	if err != nil {
