@@ -21,7 +21,15 @@ cache's pre-classified fields. If the cache value doesn't match what the classif
 extracts from the filename, it **drops the entry** (returns null). Dropped entries
 cannot be resolved for any user.
 
-## 6,958 warnings = 6,958 dropped entries. Fixes needed:
+## Progress: 6,149 warnings remain (was 6,958)
+
+### FIXED: universal2 → x86_64 (commit 3756bd8)
+
+cmake now resolves to v4.2.3 (was v3.19.1). hugo now resolves to v0.157.0
+(was v0.101.0). All 4 known-failure tests now PASS. Cache validation confirms
+812 cmake + 166 hugo universal entries have arch=x86_64. Great work!
+
+## Still needs fixing:
 
 ### 1. universal2 (1,492 dropped) — cmake, syncthing, hugo, hugo-extended, gh
 
@@ -38,34 +46,30 @@ so aarch64 users still get these builds.
 
 I added 4 known-failure tests for this (cmake + hugo, both aarch64 and x86_64).
 
-### 2. solaris/illumos (1,497 dropped) — go, syncthing, terraform, hugo, caddy, etc.
+### 2. solaris/illumos (1,745 dropped) — syncthing, terraform, hugo, caddy, etc.
 
-**The sunos translation is the bug.** The classifier recognizes `solaris`,
-`illumos`, AND `sunos` as distinct OS values. Node.js releases use `sunos` in
-filenames and have zero warnings.
+**Still broken.** Your commit message for 3756bd8 says "keep solaris/illumos"
+but the cache at 16:51 still shows `os: "sunos"` for solaris/illumos filenames.
+My cache validation test confirms: terraform 393/393, syncthing 401+261 wrong.
 
-The problem: other packages use `solaris`/`illumos` in filenames, but your
-legacy export translates them to `sunos`. Filename says `solaris`, cache says
-`sunos` → mismatch → dropped.
+The classifier recognizes `solaris`, `illumos`, AND `sunos` as distinct OS
+values (triplet.js lines 270-272). Keep the original value from the filename:
+- Filename has `solaris` → cache must say `os: "solaris"` (not `sunos`)
+- Filename has `illumos` → cache must say `os: "illumos"` (not `sunos`)
+- Filename has `sunos` → cache says `os: "sunos"` (node — already correct)
 
-**Fix**: Keep the original OS values from the filenames. Don't translate to sunos.
-- Filename has `solaris` → cache should say `os: "solaris"`
-- Filename has `illumos` → cache should say `os: "illumos"`
-- Filename has `sunos` → cache should say `os: "sunos"` (node — already correct)
+### 3. ARM variant mismatches (~630 dropped, was ~1,000)
 
-### 3. ARM variant mismatches (~1,000 dropped) — bat, delta, fd, caddy, dashcore
+Partially improved. Remaining:
 
-The cache arch must match what the classifier extracts from the filename:
-
-| Filename pattern | Classifier detects | Cache should say | Count |
+| Cache value | Classifier detects | Count | Fix |
 |---|---|---|---|
-| `arm-unknown-linux-gnueabihf` | `armhf` | `armhf` | 443 |
-| `linux_armel` | `armel` | `armel` | 424 |
-| `linux_armv5` | `armel` | `armel` | 523 |
-| various armv7a | `armv7a` | `armv7a` | 14 |
+| `armv6` | `armel` | 412 | emit `armel` |
+| `armv6` | `armv7` | 90 | emit `armv7` |
+| `armhf` | `armv7` | 82 | emit `armv7` |
+| `armv6` | `armhf` | 14 | emit `armhf` |
 
-**Fix**: In ExportLegacy, don't normalize ARM arch names. Keep what the
-classifier will detect from the filename: `armhf`, `armel`, `armv7a`.
+The cache arch must match what the classifier extracts from the filename.
 
 ### 4. android (355 dropped) — sass, lf, fzf, runzip, uuidv7
 
@@ -74,18 +78,19 @@ maps to `linux` first, then sees `android` in cache → `linux != android` → d
 
 **Fix**: Drop android entries from legacy export. Node side doesn't serve android.
 
-### 5. Minor (44 dropped)
+### 5. Minor (~80 dropped)
 
 - `sttr` .pkg (18): upstream bug, not fixable
-- mips64r6/mips64r6el → `mips64` (24): translate in legacy export
-- x86_64_v2 → `x86_64` (2): translate in legacy export
+- mips64r6/mips64r6el (24): GOER says fixed, but still showing
+- x86_64_v2/v3/v4 (62): GOER says fixed, but still showing
 
-### Test results (latest cache, 16:34)
+### Test results (latest cache, 16:51)
 
-- **15/15** installer-resolve (+ 4 known: cmake/hugo universal2)
+- **19/19** installer-resolve (cmake/hugo universal2 now PASS!)
 - **49/49** live-compare (5 known)
 - **190/196** broad sweep (6 expected)
-- **6,958** PACKAGE FORMAT CHANGE warnings (= dropped entries)
+- **3/6** cache validation pass (solaris/illumos still failing)
+- **6,149** PACKAGE FORMAT CHANGE warnings (= dropped entries, was 6,958)
 
 ## Previously resolved
 
