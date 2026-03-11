@@ -154,18 +154,6 @@ func ExportLegacy(pkg string, pd PackageData) (LegacyCache, LegacyDropStats) {
 			stats.Formats++
 			continue
 		}
-		// universal2 (macOS fat binary) → expand to aarch64 + x86_64.
-		// Node.js doesn't know "universal2"; emitting both arches ensures
-		// the binary is found for both Apple Silicon and Intel Mac clients.
-		if a.Arch == "universal2" {
-			arm := a
-			arm.Arch = "aarch64"
-			releases = append(releases, arm.toLegacy())
-			intel := a
-			intel.Arch = "x86_64"
-			releases = append(releases, intel.toLegacy())
-			continue
-		}
 		releases = append(releases, a.toLegacy())
 	}
 	if releases == nil {
