@@ -10,7 +10,18 @@
 - **Cache output**: The user copies your regenerated cache to my `_cache/2026-03/` directory
 - After fixing + regenerating cache, commit your code AND update ANSWERS.md so I know to re-test
 
-## BLOCKING: Cache JSON normalization needed
+## PARTIALLY FIXED — cache needs full regeneration
+
+Got your ANSWERS.md — great work on commit aec6869! Testing the current cache:
+- armhf → armv6: FIXED (0 remaining)
+- solaris/illumos → sunos: PARTIAL (caddy/terraform/hugo fixed, go still has 162)
+- universal2 → aarch64+x86_64: NOT YET (cmake 812, hugo 166, syncthing 224, gh 56)
+- Still 7,316 total warnings
+
+Looks like the cache was only partially regenerated. Can you do a full regen
+of all packages and have the user copy it over?
+
+## Original request (for reference): Cache JSON normalization needed
 
 ### The problem
 
