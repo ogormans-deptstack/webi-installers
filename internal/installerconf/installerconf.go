@@ -141,6 +141,9 @@ func Read(path string) (*Conf, error) {
 	case raw["github_repo"] != "":
 		c.Source = "github"
 		c.Owner, c.Repo, _ = strings.Cut(raw["github_repo"], "/")
+	case raw["github_source"] != "":
+		c.Source = "githubsource"
+		c.Owner, c.Repo, _ = strings.Cut(raw["github_source"], "/")
 	case raw["git_url"] != "":
 		c.Source = "gittag"
 		c.BaseURL = raw["git_url"]
@@ -183,6 +186,7 @@ func Read(path string) (*Conf, error) {
 	known := map[string]bool{
 		"source":             true,
 		"github_repo":        true,
+		"github_source":      true,
 		"git_url":            true,
 		"gitea_repo":         true,
 		"hashicorp_product":  true,

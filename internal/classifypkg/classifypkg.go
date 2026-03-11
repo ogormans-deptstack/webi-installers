@@ -88,6 +88,8 @@ func classifySource(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 	switch conf.Source {
 	case "github":
 		return classifyGitHub(pkg, conf, d)
+	case "githubsource":
+		return classifyGitHubSource(pkg, conf, d)
 	case "nodedist":
 		return classifyNodeDist(pkg, conf, d)
 	case "gittag":
@@ -367,55 +369,79 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 			})
 		}
 
-		// Source archives for packages with no binary assets.
-		// These are installable on any POSIX system (shell scripts, etc.).
-		//
-		// GitHub has two archive URL formats:
-		// Releases with no uploaded assets are source-only — use the
-		// API-provided tarball/zipball URLs. These can also be installed
-		// via `git clone --branch <tag>` as a fallback.
-		//
-		// TODO: HEAD-follow the tarball_url at fetch time to get the
-		// resolved codeload URL and Content-Disposition filename
-		// (Owner-Repo-Tag-0-gCommitHash.ext). For now, use the tag
-		// as the filename since the actual download name comes from
-		// Content-Disposition anyway.
-		if len(rel.Assets) == 0 {
-			owner := conf.Owner
-			repo := conf.Repo
-			tag := rel.TagName
-			if rel.TarballURL != "" {
-				assets = append(assets, storage.Asset{
-					Filename: repo + "-" + tag + ".tar.gz",
-					Version:  version,
-					Channel:  channel,
-					OS:       "posix_2017",
-					Arch:     "*",
-					Format:   ".tar.gz",
-					Download: rel.TarballURL,
-					Date:     date,
-				})
+		// Releases with no uploaded binary assets are skipped for GitHub
+		// packages. These are typically old releases from before the
+		// project started uploading binaries. Source-installable packages
+		// should use githubsource or gittag source type instead.
+	}
+	return assets, nil
+}
+
+// classifyGitHubSource handles packages installed from source via GitHub
+// releases. Unlike classifyGitHub (which classifies binary assets), this
+// emits source tarball/zipball/git entries for every release. Used for
+// shell scripts, vim plugins, and other source-installable packages.
+func classifyGitHubSource(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]storage.Asset, error) {
+	tagPrefix := conf.TagPrefix
+	releases, err := ReadAllRaw(d)
+	if err != nil {
+		return nil, err
+	}
+
+	repo := conf.Repo
+
+	var assets []storage.Asset
+	for _, data := range releases {
+		var rel ghRelease
+		if err := json.Unmarshal(data, &rel); err != nil {
+			continue
+		}
+		if rel.Draft {
+			continue
+		}
+
+		version := rel.TagName
+		if tagPrefix != "" {
+			if !strings.HasPrefix(version, tagPrefix) {
+				continue
 			}
-			if rel.ZipballURL != "" {
-				assets = append(assets, storage.Asset{
-					Filename: repo + "-" + tag + ".zip",
-					Version:  version,
-					Channel:  channel,
-					OS:       "posix_2017",
-					Arch:     "*",
-					Format:   ".zip",
-					Download: rel.ZipballURL,
-					Date:     date,
-				})
-			}
-			// Git clone asset — same as gittag source.
-			gitURL := fmt.Sprintf("https://github.com/%s/%s.git", owner, repo)
+			version = strings.TrimPrefix(version, tagPrefix)
+		}
+
+		channel := "stable"
+		if rel.Prerelease {
+			channel = "beta"
+		} else {
+			channel = channelFromVersion(version)
+		}
+
+		date := ""
+		if len(rel.PublishedAt) >= 10 {
+			date = rel.PublishedAt[:10]
+		}
+
+		tag := rel.TagName
+		if rel.TarballURL != "" {
 			assets = append(assets, storage.Asset{
-				Filename: repo + "-" + tag,
+				Filename: repo + "-" + tag + ".tar.gz",
 				Version:  version,
 				Channel:  channel,
-				Format:   "git",
-				Download: gitURL,
+				OS:       "posix_2017",
+				Arch:     "*",
+				Format:   ".tar.gz",
+				Download: rel.TarballURL,
+				Date:     date,
+			})
+		}
+		if rel.ZipballURL != "" {
+			assets = append(assets, storage.Asset{
+				Filename: repo + "-" + tag + ".zip",
+				Version:  version,
+				Channel:  channel,
+				OS:       "posix_2017",
+				Arch:     "*",
+				Format:   ".zip",
+				Download: rel.ZipballURL,
 				Date:     date,
 			})
 		}
