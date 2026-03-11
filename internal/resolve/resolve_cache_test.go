@@ -320,26 +320,29 @@ func TestResolvePosixPackages(t *testing.T) {
 	}
 }
 
-// TestResolveLibcPreference tests musl vs gnu selection.
+// TestResolveLibcPreference tests libc selection.
+// bat is a Rust project — its musl builds are static (libc='none').
+// pwsh has hard musl dependencies (libc='musl').
 func TestResolveLibcPreference(t *testing.T) {
-	dists := loadCacheDists(t, "bat")
+	batDists := loadCacheDists(t, "bat")
 
-	// Explicit musl request.
-	m := resolve.Best(dists, resolve.Query{
+	// Musl host requesting bat: gets the static musl build (tagged 'none').
+	m := resolve.Best(batDists, resolve.Query{
 		OS:      buildmeta.OSLinux,
 		Arch:    buildmeta.ArchAMD64,
 		Libc:    buildmeta.LibcMusl,
 		Formats: []string{".tar.gz"},
 	})
 	if m == nil {
-		t.Fatal("expected musl match")
+		t.Fatal("expected match for musl host")
 	}
-	if m.Libc != "musl" {
-		t.Errorf("Libc = %q, want musl", m.Libc)
+	// Rust musl builds are static — tagged as 'none', not 'musl'.
+	if m.Libc != "none" {
+		t.Errorf("bat musl request: Libc = %q, want none (static musl)", m.Libc)
 	}
 
 	// Explicit gnu request.
-	m = resolve.Best(dists, resolve.Query{
+	m = resolve.Best(batDists, resolve.Query{
 		OS:      buildmeta.OSLinux,
 		Arch:    buildmeta.ArchAMD64,
 		Libc:    buildmeta.LibcGNU,
@@ -352,14 +355,29 @@ func TestResolveLibcPreference(t *testing.T) {
 		t.Errorf("Libc = %q, want gnu", m.Libc)
 	}
 
-	// No preference — should still match (accepts either).
-	m = resolve.Best(dists, resolve.Query{
+	// No preference — should still match (accepts any).
+	m = resolve.Best(batDists, resolve.Query{
 		OS:      buildmeta.OSLinux,
 		Arch:    buildmeta.ArchAMD64,
 		Formats: []string{".tar.gz"},
 	})
 	if m == nil {
 		t.Fatal("expected match with no libc preference")
+	}
+
+	// pwsh has hard musl builds (dynamically linked, requires musl runtime).
+	pwshDists := loadCacheDists(t, "pwsh")
+	m = resolve.Best(pwshDists, resolve.Query{
+		OS:      buildmeta.OSLinux,
+		Arch:    buildmeta.ArchAMD64,
+		Libc:    buildmeta.LibcMusl,
+		Formats: []string{".tar.gz"},
+	})
+	if m == nil {
+		t.Fatal("expected pwsh musl match")
+	}
+	if m.Libc != "musl" {
+		t.Errorf("pwsh musl request: Libc = %q, want musl", m.Libc)
 	}
 }
 

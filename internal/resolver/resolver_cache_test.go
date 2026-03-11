@@ -250,20 +250,21 @@ func TestCacheGitPackages(t *testing.T) {
 }
 
 // TestCacheLibcPreference tests explicit libc selection.
+// bat is Rust — its musl builds are static (tagged 'none').
 func TestCacheLibcPreference(t *testing.T) {
 	assets := loadAssets(t, "bat")
 
-	// Explicit musl.
+	// Musl host requesting bat: gets static musl build (tagged 'none').
 	res, err := resolver.Resolve(assets, resolver.Request{
 		OS:   "linux",
 		Arch: "x86_64",
 		Libc: "musl",
 	})
 	if err != nil {
-		t.Fatal("expected musl match")
+		t.Fatal("expected match for musl host")
 	}
-	if res.Asset.Libc != "musl" {
-		t.Errorf("Libc = %q, want musl", res.Asset.Libc)
+	if res.Asset.Libc != "none" {
+		t.Errorf("Libc = %q, want none (static musl)", res.Asset.Libc)
 	}
 
 	// Explicit gnu.

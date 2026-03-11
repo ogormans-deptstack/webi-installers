@@ -14,6 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"regexp"
+
+	"github.com/webinstall/webi-installers/internal/buildmeta"
 	"github.com/webinstall/webi-installers/internal/classify"
 	"github.com/webinstall/webi-installers/internal/installerconf"
 	"github.com/webinstall/webi-installers/internal/rawcache"
@@ -305,6 +308,13 @@ type ghAsset struct {
 	Size               int64  `json:"size"`
 }
 
+// reRustMuslStatic matches Rust target triples that indicate a statically-linked
+// musl build. Rust's *-unknown-linux-musl targets are always static — they have
+// zero runtime libc dependency. This is distinct from packages like pwsh
+// (-linux-musl-x64), bun (-linux-x64-musl), and node (-linux-x64-musl) which
+// dynamically link against musl and require it at runtime.
+var reRustMuslStatic = regexp.MustCompile(`(?i)-unknown-linux-musl`)
+
 func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]storage.Asset, error) {
 	tagPrefix := conf.TagPrefix
 	releases, err := ReadAllRaw(d)
@@ -356,13 +366,19 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 				name = name[:len(name)-4] + ".tar.gz"
 			}
 
+			libc := r.Libc
+			// Rust static musl builds have zero runtime libc dependency.
+			if libc == buildmeta.LibcMusl && reRustMuslStatic.MatchString(a.Name) {
+				libc = buildmeta.LibcNone
+			}
+
 			assets = append(assets, storage.Asset{
 				Filename: name,
 				Version:  version,
 				Channel:  channel,
 				OS:       string(r.OS),
 				Arch:     string(r.Arch),
-				Libc:     string(r.Libc),
+				Libc:     string(libc),
 				Format:   string(r.Format),
 				Download: a.BrowserDownloadURL,
 				Date:     date,
