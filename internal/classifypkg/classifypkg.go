@@ -371,6 +371,10 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 			if libc == buildmeta.LibcMusl && reRustMuslStatic.MatchString(a.Name) {
 				libc = buildmeta.LibcNone
 			}
+			// Windows gnu (MinGW) is self-contained — no runtime deps.
+			if r.OS == buildmeta.OSWindows && libc == buildmeta.LibcGNU {
+				libc = buildmeta.LibcNone
+			}
 
 			assets = append(assets, storage.Asset{
 				Filename: name,

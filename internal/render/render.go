@@ -127,8 +127,11 @@ func Bash(tplPath, installersDir, pkgName string, p Params) (string, error) {
 	}
 
 	// Inject the installer script at the {{ installer }} marker.
-	text = strings.Replace(text, "# {{ installer }}", string(installSh), 1)
-	text = strings.Replace(text, "{{ installer }}", string(installSh), 1)
+	// The marker sits inside __init_installer() at 8-space indent.
+	// Production pads every line of install.sh to match, and replaces
+	// the entire line (including leading whitespace).
+	padded := padScript(string(installSh), "        ")
+	text = replaceMarkerLine(text, "{{ installer }}", padded)
 
 	return text, nil
 }
@@ -167,8 +170,8 @@ func PowerShell(tplPath, installersDir, pkgName string, p Params) (string, error
 		text = InjectPSVar(text, v.name, v.value)
 	}
 
-	text = strings.Replace(text, "# {{ installer }}", string(installPs1), 1)
-	text = strings.Replace(text, "{{ installer }}", string(installPs1), 1)
+	// PS1 marker is at column 0, no padding needed.
+	text = replaceMarkerLine(text, "{{ installer }}", string(installPs1))
 
 	return text, nil
 }
@@ -237,4 +240,25 @@ func InjectVar(text, name, value string) string {
 // close-quote, add escaped quote, re-open quote: 'foo'\''bar'
 func sanitizeShellValue(s string) string {
 	return strings.ReplaceAll(s, "'", `'\''`)
+}
+
+// padScript prepends each line of a script with the given indent string.
+// This matches production behavior where install.sh content is indented
+// to align with the surrounding template code.
+func padScript(script, indent string) string {
+	lines := strings.Split(script, "\n")
+	for i, line := range lines {
+		if line != "" {
+			lines[i] = indent + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// replaceMarkerLine replaces an entire line containing the marker
+// (including any leading whitespace) with the replacement text.
+// This matches production's regex: /\s*#?\s*{{ installer }}/
+func replaceMarkerLine(text, marker, replacement string) string {
+	re := regexp.MustCompile(`(?m)^[ \t]*#?[ \t]*` + regexp.QuoteMeta(marker) + `[^\n]*`)
+	return re.ReplaceAllString(text, replacement)
 }
