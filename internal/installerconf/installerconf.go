@@ -152,15 +152,9 @@ func Read(path string) (*Conf, error) {
 		c.Source = "hashicorp"
 		c.Repo = raw["hashicorp_product"]
 	default:
-		// Legacy / one-off sources: explicit source key.
+		// One-off dist sources (nodedist, zigdist, etc.).
 		c.Source = raw["source"]
-		c.Owner = raw["owner"]
-		c.Repo = raw["repo"]
-		if v := raw["base_url"]; v != "" {
-			c.BaseURL = v
-		} else {
-			c.BaseURL = raw["url"]
-		}
+		c.BaseURL = raw["url"]
 	}
 
 	c.TagPrefix = raw["tag_prefix"]
@@ -188,8 +182,6 @@ func Read(path string) (*Conf, error) {
 	// Collect unrecognized keys.
 	known := map[string]bool{
 		"source":             true,
-		"owner":              true,
-		"repo":               true,
 		"github_repo":        true,
 		"git_url":            true,
 		"gitea_repo":         true,
