@@ -525,29 +525,21 @@ BuildsCacher.create = function ({ ALL_TERMS, installers, caches }) {
       return null;
     }
 
-    for (let _triplet of triplets) {
-      let targetReleases = projInfo.releasesByTriplet[_triplet];
-      if (!targetReleases) {
-        continue;
-      }
+    // Iterate versions newest-first, then try each triplet for that
+    // version. This matches the Go resolver's behavior and ensures we
+    // get the latest version even if the preferred triplet only has old
+    // releases (e.g. rg dropped x86_64-linux-gnu in v15, so the gnu
+    // triplet only has v0.1.6 — version-first finds v15 via musl).
+    for (let lexver of projInfo.lexvers) {
+      let ver = projInfo.lexversMap[lexver] || lexver;
 
-      let versions = Object.keys(targetReleases);
-      //console.log('dbg: targetRelease versions', versions);
-      let lexvers = [];
-      for (let version of versions) {
-        let lexPrefix = Lexver.parseVersion(version);
-        lexvers.push(lexPrefix);
-      }
-      lexvers.sort();
-      lexvers.reverse();
-      // TODO get the other matchInfo props
+      for (let _triplet of triplets) {
+        let targetReleases = projInfo.releasesByTriplet[_triplet];
+        if (!targetReleases) {
+          continue;
+        }
 
-      // Make sure that these releases are the expected version
-      // (ex: jq1.7 => darwin-arm64-libc, jq1.6 => darwin-x86_64-libc)
-      for (let matchver of lexvers) {
-        let ver = projInfo.lexversMap[matchver] || matchver;
         let packages = targetReleases[ver];
-        //console.log('dbg: packages', packages);
         if (!packages) {
           continue;
         }
@@ -598,21 +590,38 @@ BuildsCacher.create = function ({ ALL_TERMS, installers, caches }) {
       return triplets;
     }
 
+    // Prefer platform-specific matches over ANYOS/ANYARCH fallbacks.
+    // This ensures that e.g. darwin-aarch64-none matches before
+    // ANYOS-ANYARCH-none (.git source URLs from old releases).
     let oses = [];
     if (hostTarget.os === 'windows') {
-      oses = ['ANYOS', 'windows'];
+      oses = ['windows', 'ANYOS'];
     } else if (hostTarget.os === 'android') {
-      oses = ['ANYOS', 'posix_2017', 'posix_2024', 'android', 'linux'];
+      oses = ['android', 'linux', 'posix_2017', 'posix_2024', 'ANYOS'];
     } else {
-      oses = ['ANYOS', 'posix_2017', 'posix_2024', hostTarget.os];
+      oses = [hostTarget.os, 'posix_2017', 'posix_2024', 'ANYOS'];
     }
 
     let waterfall = HostTargets.WATERFALL[hostTarget.os] || {};
     let arches = waterfall[hostTarget.arch] ||
       HostTargets.WATERFALL.ANYOS[hostTarget.arch] || [hostTarget.arch];
-    arches = ['ANYARCH'].concat(arches);
+    arches = arches.concat(['ANYARCH']);
     let libcs = waterfall[hostTarget.libc] ||
       HostTargets.WATERFALL.ANYOS[hostTarget.libc] || [hostTarget.libc];
+
+    // The WATERFALL maps 'libc' (host glibc) => ['none', 'libc'] but
+    // never tries 'gnu' or 'musl'. Packages with glibc-linked builds
+    // (Rust projects like bat, rg; also node) are tagged libc='gnu' in
+    // the Go cache. Static musl builds (Rust x86_64-unknown-linux-musl)
+    // also work on glibc hosts.
+    if (hostTarget.libc === 'libc' && !libcs.includes('gnu')) {
+      // none = static (preferred, zero deps)
+      // gnu = glibc-linked (glibc host can run these)
+      // musl = musl-linked (often static for Rust; node-musl is an exception
+      //        but version-first iteration prevents picking it over gnu)
+      // libc = legacy fallback (rarely used in cache metadata)
+      libcs = ['none', 'gnu', 'musl', 'libc'];
+    }
 
     for (let os of oses) {
       for (let arch of arches) {

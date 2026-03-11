@@ -292,7 +292,7 @@ async function main() {
         libc: '',
         lts: false,
         channel: 'stable',
-        formats: ['tar', 'zip', 'exe', 'xz'],
+        formats: [],
         limit: 1,
       });
       let localFirst = localResult.releases[0];

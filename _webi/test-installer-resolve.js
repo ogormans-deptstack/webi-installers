@@ -102,46 +102,60 @@ let UA_CASES = [
     expectArch: 'x86_64',
     expectExt: 'tar.gz',
   },
-  // === Known: WATERFALL libc vs gnu ===
-  // Packages whose Go cache has libc='gnu' for Linux glibc builds.
-  // The WATERFALL maps `libc` => ['none', 'libc'] but never tries 'gnu'.
+  // === Linux glibc — packages with libc='gnu' in cache ===
+  // These previously failed (WATERFALL libc→gnu gap). Fixed by adding
+  // 'gnu' to the libc candidates for glibc hosts in _enumerateTriplets.
   {
-    label: 'bat Linux amd64 (known: WATERFALL libc vs gnu)',
+    label: 'bat Linux amd64',
     pkg: 'bat',
     ua: 'x86_64/unknown Linux/5.15.0 libc',
-    known: 'WATERFALL libc->gnu gap',
+    expectOs: 'linux',
+    expectArch: 'x86_64',
+    expectExt: 'tar.gz',
   },
   {
-    label: 'rg Linux amd64 (known: WATERFALL libc vs gnu)',
+    label: 'rg Linux amd64',
     pkg: 'rg',
     ua: 'x86_64/unknown Linux/5.15.0 libc',
-    known: 'WATERFALL libc->gnu gap',
+    expectOs: 'linux',
+    expectArch: 'x86_64',
+    expectExt: 'tar.gz',
   },
   {
-    label: 'node Linux amd64 (known: WATERFALL libc vs gnu)',
+    label: 'node Linux amd64',
     pkg: 'node',
     ua: 'x86_64/unknown Linux/5.15.0 libc',
-    known: 'WATERFALL libc->gnu gap',
+    expectOs: 'linux',
+    expectArch: 'x86_64',
+    expectExt: 'tar.xz',
   },
 
-  // === Known: ANYOS/ANYARCH .git priority ===
+  // === Packages with .git source URLs in old releases ===
+  // These previously failed (ANYOS .git matched before platform binary).
+  // Fixed by putting specific OS before ANYOS in triplet enumeration.
   {
-    label: 'jq macOS arm64 (known: ANYOS .git priority)',
+    label: 'jq macOS arm64',
     pkg: 'jq',
     ua: 'aarch64/unknown Darwin/24.2.0 libc',
-    known: 'ANYOS .git matched before platform binary',
+    expectOs: 'darwin',
+    expectArch: 'aarch64',
+    expectExt: 'exe',
   },
   {
-    label: 'caddy macOS arm64 (known: ANYOS .git priority)',
+    label: 'caddy macOS arm64',
     pkg: 'caddy',
     ua: 'aarch64/unknown Darwin/24.2.0 libc',
-    known: 'ANYOS .git matched before platform binary',
+    expectOs: 'darwin',
+    expectArch: 'aarch64',
+    expectExt: 'tar.gz',
   },
   {
-    label: 'caddy Linux amd64 (known: ANYOS .git priority)',
+    label: 'caddy Linux amd64',
     pkg: 'caddy',
     ua: 'x86_64/unknown Linux/5.15.0 libc',
-    known: 'ANYOS .git matched before platform binary',
+    expectOs: 'linux',
+    expectArch: 'x86_64',
+    expectExt: 'tar.gz',
   },
 ];
 
