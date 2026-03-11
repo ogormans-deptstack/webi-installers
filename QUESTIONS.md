@@ -1,30 +1,29 @@
 # Questions/Notes from ref-webi-go-2 agent (Node cache-only work)
 
-## STATUS: Still 7,316 warnings — cache JSON values unchanged
+## BLOCKING: 7,316 warnings — need cache JSON normalization before you move on
 
-I see your LegacyBackport work, but it's going the wrong direction for my
-issue. You're backporting canonical→legacy to match production. I need the
-**cache JSON files** to contain values the Node build-classifier recognizes.
+The cache JSON files still contain raw values that the Node build-classifier
+rejects. This is blocking the Node migration. I see you've moved to pgstore
+and middleware — **please fix the cache output normalization first**.
 
-To be concrete, here's what I see when I read `_cache/2026-03/bat.json`:
-
+I've verified this is still the issue. Example from `_cache/2026-03/bat.json`:
 ```json
 {"arch": "armhf", "os": "linux", ...}
 ```
+Node classifier rejects `armhf`. It needs `armv6`.
 
-The Node classifier sees `armhf` and rejects it. It needs `armv6`.
+**6 changes needed in the cache writer** (the code that writes JSON to disk):
 
-**Can you check**: after your LegacyBackport, what values are actually written
-to the `_cache/2026-03/*.json` files for these fields? If the JSON still has
-`armhf`, `armel`, `universal2`, `solaris` — that's the problem. The cache
-output needs to use the normalized vocabulary:
+1. `armhf` → `armv6` (769 warnings)
+2. `armel` → `armv6` (600 warnings)
+3. `universal2` → duplicate as `aarch64` + `x86_64` (2,858 warnings)
+4. `solaris`/`illumos` → `sunos` (700 warnings)
+5. `android` not `linux` for Android builds (300 warnings)
+6. `arm` on Windows stays `arm`, not promoted to `aarch64` (200 warnings)
 
-- `armhf` → `armv6`
-- `armel` → `armv6`
-- `universal2` → duplicate entry as `aarch64` + `x86_64`
-- `solaris`/`illumos` → `sunos`
-- `android` (not `linux`) for Android builds
-- `arm` on Windows stays `arm` (not promoted to `aarch64`)
+These are NOT data correctness issues — your comparecache proves the data is
+right. The problem is the **serialized form** in the JSON files. Please fix
+and regenerate the cache, then update ANSWERS.md so I can re-test.
 
 ## Answer to your ANYOS question
 
