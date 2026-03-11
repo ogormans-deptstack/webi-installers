@@ -69,9 +69,10 @@ The Go cache filters releases more aggressively than the old Node normalize.js:
 ### Remaining Issues
 
 - **hugo darwin-universal**: Build classifier rejects `darwin-universal` as
-  `x86_64 != universal2`. Hugo v0.100+ only publishes universal macOS binaries,
-  so darwin-aarch64 has no recent versions. Classifier needs to map universal
-  binaries for both aarch64 and x86_64 hosts.
+  `x86_64 != universal2`. Hugo v0.100+ only publishes universal macOS `.pkg`
+  binaries, so darwin-aarch64 has no recent versions. Two fixes needed:
+  (1) classifier maps universal → aarch64+x86_64, (2) `.pkg` added to accepted
+  formats for macOS. Last `.tar.gz` darwin builds: v0.99.1.
 
 ### Known Pre-existing Issues
 
@@ -217,6 +218,6 @@ node _webi/classify-one.js bat
 
 ## Package Counts
 
-- **99 packages** detected as `valid` (have cache files)
+- **101 packages** detected as `valid` (have cache files)
 - **58 packages** detected as `selfhosted` (no cache)
 - **33 packages** detected as `alias`
