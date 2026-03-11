@@ -92,6 +92,14 @@ func NormalizeVersions(pkg string, assets []storage.Asset) {
 	switch pkg {
 	case "git":
 		git.NormalizeVersions(assets)
+	case "lf":
+		// lf tags are "r1", "r2", etc. Node.js converts to "0.N.0".
+		for i := range assets {
+			v := assets[i].Version
+			if strings.HasPrefix(v, "r") {
+				assets[i].Version = "0." + v[1:] + ".0"
+			}
+		}
 	}
 }
 

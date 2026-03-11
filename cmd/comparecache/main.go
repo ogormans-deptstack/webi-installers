@@ -542,6 +542,14 @@ func normalizeVersionFunc(pkg string) func(string) string {
 			}
 			return base + "." + suffix
 		}
+	case "lf":
+		return func(v string) string {
+			// lf: r21 → 0.21.0
+			if strings.HasPrefix(v, "r") {
+				return "0." + v[1:] + ".0"
+			}
+			return v
+		}
 	default:
 		return func(v string) string { return v }
 	}
