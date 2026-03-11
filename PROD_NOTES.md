@@ -36,6 +36,16 @@ pre-classified fields and re-normalize from filenames to match production output
 For the installer endpoint (`builds-cacher.js` + `serve-installer.js`), the Go
 naming is used directly — the build-classifier handles its own mappings.
 
+### Known Intentional Differences from Production
+
+The Go cache filters releases more aggressively than the old Node normalize.js:
+- **Excluded**: `.deb`, `.rpm`, `.sha256`, `.sig`, `.pem`, `.sbom`, `.txt` files
+  (non-installable metadata/package-manager assets)
+- **OS `unknown`**: Some assets that normalize.js couldn't classify get `os: "unknown"`.
+  The Go cache either classifies them correctly or excludes them.
+- These are improvements — the filtered results better reflect what webi can
+  actually install.
+
 ### Known Pre-existing Issues
 
 - **`transform-releases.js` self-test**: The `if (require.main === module)`
@@ -45,9 +55,107 @@ naming is used directly — the build-classifier handles its own mappings.
 - **Go illumos/solaris warnings**: Go's illumos and solaris builds trigger
   "wrong os" warnings (expected `sunos`).
 
+## Public API Endpoints
+
+The HTTP routing is NOT in this repo — an external server calls into the Node
+modules. Here's the complete endpoint catalog:
+
+### 1. Bootstrap / Installer Scripts
+
+```
+GET /{package}@{tag}
+GET /{package}@{tag}.sh
+GET /{package}@{tag}.ps1
+```
+
+**Handler**: `serve-installer.js:serveInstaller(baseurl, ua, pkg, tag, ext, formats, libc)`
+
+**Flow**:
+1. Parse User-Agent → `build-classifier/host-targets.js:termsToTarget()` → `{os, arch, libc}`
+2. Resolve alias → `builds-cacher.js:getProjectType()` (symlink or README alias)
+3. Load cache → `builds-cacher.js:getPackages()` → reads `_cache/YYYY-MM/{pkg}.json`
+4. Classify → `builds-cacher.js:transformAndUpdate()` → triplets, versions, formats
+5. Match → `builds-cacher.js:findMatchingPackages()` → filter by OS/arch/libc/version
+6. Select → `builds-cacher.js:selectPackage()` → pick preferred format
+7. Render → `installers.js:renderBash()` or `renderPowerShell()` with template vars
+
+**UA format** (sent by webi bootstrap): `{arch}/unknown {OS}/{version} {libc}`
+- e.g. `aarch64/unknown Darwin/24.2.0 libc`
+- e.g. `x86_64/unknown Linux/5.15.0 musl`
+
+**Template variables injected**: `WEBI_VERSION`, `WEBI_PKG_URL`, `WEBI_PKG_FILE`,
+`WEBI_OS`, `WEBI_ARCH`, `WEBI_EXT`, `WEBI_CHANNEL`, `PKG_NAME`
+
+### 2. Release Metadata API (Legacy)
+
+```
+GET /api/releases/{package}.json
+GET /api/releases/{package}@{version}.json
+GET /api/releases/{package}.tab
+GET /api/releases/{package}@{version}.tab
+```
+
+**Handler**: `transform-releases.js:getReleases({pkg, ver, os, arch, libc, lts, channel, formats, limit})`
+
+**Flow**:
+1. Read cache → `_cache/YYYY-MM/{pkg}.json`
+2. Re-normalize → `normalize.js` (clears pre-classified fields, re-detects from filenames)
+3. Filter → `filterReleases()` by query params
+4. Sort → by version (descending), then format preference
+
+**Query params**: `os`, `arch`, `libc`, `lts`, `channel`, `formats`, `limit`
+
+**Response (JSON)**: `{ oses, arches, libcs, formats, releases: [{name, version, lts, channel, date, os, arch, ext, download, libc}] }`
+
+**Response (TSV)**: `version \t lts \t channel \t date \t os \t arch \t ext \t - \t download`
+
+**Key format details**:
+- OS: `macos` (not `darwin`), `linux`, `windows`
+- Arch: `arm64` (not `aarch64`), `amd64`, `armv6l`, `armv7l`, `x86`
+- Versions: no `v` prefix (`0.26.1` not `v0.26.1`)
+
+### 3. Curl-pipe Bootstrap
+
+```
+GET /{package}@{tag} (with curl/wget User-Agent)
+```
+
+**Handler**: `serve-installer.js:getPosixCurlPipeBootstrap({baseurl, pkg, ver})`
+or `getPwshCurlPipeBootstrap({baseurl, pkg, ver, exename})`
+
+Sets env vars `WEBI_PKG`, `WEBI_HOST`, `WEBI_CHECKSUM` in the bootstrap template.
+
+### 4. Package Metadata
+
+```
+GET /packages/{package}/README.md (or other assets)
+```
+
+**Handler**: `packages.js:get(name)` → reads README.md frontmatter via `frontmarker.js`
+
+**Response**: `{ title, tagline, description, bash, windows }`
+
+### 5. Debug
+
+```
+GET /api/debug
+```
+
+**Handler**: `ua-detect.js:request(req)` — returns detected OS/arch/libc from UA.
+
 ## Testing
 
-All paths verified locally:
+### Automated compatibility test
+
+```sh
+# Refresh golden data from live site
+node _webi/test-api-compat.js --refresh   # (not yet implemented)
+
+# Run comparison
+node _webi/test-api-compat.js
+```
+
+### Manual smoke tests
 
 ```sh
 # builds-cacher: load packages from cache
@@ -62,16 +170,6 @@ node -e "let I = require('./_webi/serve-installer.js'); I.helper({unameAgent:'aa
 # classify-one: dev tool reads cache
 node _webi/classify-one.js bat
 ```
-
-## Public API Endpoints (live at webinstall.dev)
-
-- `GET /api/releases/{pkg}.json` — Returns JSON with `oses`, `arches`, `libcs`,
-  `formats`, and `releases` array. Uses `macos` not `darwin`.
-- `GET /api/releases/{pkg}.tab` — Tab-separated release data
-- `GET /{pkg}@{tag}` — Returns installer script (bash or ps1 based on UA)
-
-The HTTP routing is NOT in this repo — an external server calls into the Node
-modules (`Releases.getReleases()` and `InstallerServer.serveInstaller()`).
 
 ## Project Type Detection
 
