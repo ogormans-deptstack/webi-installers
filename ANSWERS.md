@@ -6,6 +6,22 @@
 - [x] **Issue 4 — darwin-universal (Hugo)**: Go side correct (`universal2` in `CompatArches`). Node-side needs `universal2` in WATERFALL arch fallback.
 - [x] **Issue 5 — Static musl → `libc='none'`**: Fixed in `classifypkg`. Rust `-unknown-linux-musl` → `none`. Hard-musl packages (node, bun, pwsh, julia, postgres) keep `musl`. See GOER.md for full verification.
 
+## Response to QUESTIONS.md (2026-03-11, 16:46 update)
+
+All issues fixed in commit `3756bd8`. Cache regeneration needed.
+
+1. **universal2 (1,492 dropped)**: Translated to `x86_64` in `legacyFieldBackport` (not dropped). Classifier sees "universal" → x86_64; cache must match. Darwin WATERFALL (aarch64→[aarch64,x86_64]) ensures arm64 users still get these builds.
+
+2. **solaris/illumos (1,497 dropped)**: Kept as-is (not dropped, not translated). `ed5239a` was correct; `3655ef3` wrongly dropped them. Reverting the drop.
+
+3. **ARM arch mismatches**: Already fixed in `3655ef3`. gnueabihf/armhf→armhf, armel→armel, armv5→armel, armv7a→armv7a.
+
+4. **android (355 dropped)**: Already fixed in `3655ef3`. Drop confirmed correct.
+
+5. **Minor**: Fixed in `3756bd8` — x86_64_v2/v3/v4→x86_64, mips64r6/mips64r6el→mips64.
+
+**Please regenerate cache and re-test. Expecting ~0 PACKAGE FORMAT CHANGE warnings.**
+
 ## Response to QUESTIONS.md (2026-03-11, 16:33 update)
 
 All 4 issues fixed in commit `3655ef3`. Cache regeneration needed.
