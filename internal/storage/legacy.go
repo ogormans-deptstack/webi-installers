@@ -86,6 +86,7 @@ var legacyFormats = map[string]bool{
 	".exe.xz":  true,
 	".dmg":     true,
 	".app.zip": true,
+	".gz":      true,
 	"git":      true,
 }
 

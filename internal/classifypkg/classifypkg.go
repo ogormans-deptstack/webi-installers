@@ -814,6 +814,10 @@ func classifyITerm2Dist(d *rawcache.Dir) ([]storage.Asset, error) {
 			continue
 		}
 
+		if entry.Version == "" {
+			continue
+		}
+
 		filename := filepath.Base(entry.URL)
 
 		assets = append(assets, storage.Asset{

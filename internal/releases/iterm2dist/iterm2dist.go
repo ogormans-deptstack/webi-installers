@@ -26,7 +26,7 @@ type Entry struct {
 }
 
 var linkRe = regexp.MustCompile(`href="(https://iterm2\.com/downloads/[^"]*\.zip)"`)
-var versionRe = regexp.MustCompile(`iTerm2[-_]v?(\d+(?:_\d+)*)(?:[-_]?beta(\d+))?\.zip`)
+var versionRe = regexp.MustCompile(`iTerm2[-_]v?(\d+(?:_\d+)*)(?:[-_]?(?:beta|preview)[-_]?(\d*))?\.zip`)
 
 // Fetch retrieves iTerm2 releases by scraping the downloads page.
 //
