@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/webinstall/webi-installers/internal/classify"
 	"github.com/webinstall/webi-installers/internal/installerconf"
@@ -76,6 +77,7 @@ func Package(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]storage.A
 
 	TagVariants(pkg, assets)
 	NormalizeVersions(pkg, assets)
+	processGitTagHEAD(assets)
 	assets = ApplyConfig(assets, conf)
 	assets = appendLegacy(pkg, assets)
 	return assets, nil
@@ -163,6 +165,52 @@ func TagVariants(pkg string, assets []storage.Asset) {
 
 // appendLegacy adds hardcoded legacy releases for packages that had
 // releases from sources that no longer exist (e.g. EnterpriseDB binaries).
+// processGitTagHEAD handles HEAD entries from gittag sources.
+// For repos with real version tags, HEAD entries are tagged with a "head"
+// variant so they're filtered from the legacy cache. For tagless repos
+// (only HEAD entries), the version and filename are rewritten to match
+// the Node.js legacy format: version "2023.10.10-18.42.21", filename
+// "{repo}-v2023.10.10-18.42.21".
+func processGitTagHEAD(assets []storage.Asset) {
+	hasReal := false
+	hasHEAD := false
+	for _, a := range assets {
+		if a.Format != "git" {
+			continue
+		}
+		if strings.HasPrefix(a.Version, "HEAD-") {
+			hasHEAD = true
+		} else {
+			hasReal = true
+		}
+	}
+	if !hasHEAD {
+		return
+	}
+
+	for i := range assets {
+		if !strings.HasPrefix(assets[i].Version, "HEAD-") {
+			continue
+		}
+		if hasReal {
+			// Repo has real tags: exclude HEAD from legacy cache.
+			assets[i].Variants = append(assets[i].Variants, "head")
+		} else {
+			// Tagless repo: rewrite to Node.js legacy format.
+			// HEAD-2023.10.10-18.42.21 → 2023.10.10-18.42.21
+			datetime := strings.TrimPrefix(assets[i].Version, "HEAD-")
+			assets[i].Version = datetime
+			// {repo}-HEAD-2023.10.10-18.42.21 → {repo}-v2023.10.10-18.42.21
+			assets[i].Filename = strings.Replace(
+				assets[i].Filename,
+				"HEAD-"+datetime,
+				"v"+datetime,
+				1,
+			)
+		}
+	}
+}
+
 func appendLegacy(pkg string, assets []storage.Asset) []storage.Asset {
 	switch pkg {
 	case "postgres":
@@ -564,8 +612,15 @@ func classifyGitTag(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 		} else if len(entry.Date) >= 19 {
 			// Tagless repo (HEAD of master/main): synthesize a date-based
 			// version prefixed with HEAD so it doesn't sort ahead of
-			// real semver tags (e.g. HEAD-2023.10.10 vs v1.2).
-			version = "HEAD-" + strings.ReplaceAll(entry.Date[:10], "-", ".")
+			// real semver tags (e.g. HEAD-2023.10.10-18.42.21 vs v1.2).
+			// The full datetime (including time) is needed to match the
+			// Node.js legacy format (v2023.10.10-18.42.21).
+			t, parseErr := time.Parse(time.RFC3339, entry.Date)
+			if parseErr != nil {
+				continue
+			}
+			t = t.UTC()
+			version = "HEAD-" + t.Format("2006.01.02-15.04.05")
 			filename = repoName + "-" + version
 		} else {
 			continue
