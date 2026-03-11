@@ -31,6 +31,18 @@ All 7 issues investigated and fixed in commit `aec6869`. Cache regenerated. Summ
 
 The 3 known production bugs (iterm2 channel, postgres ext, terraform alpha) are unchanged.
 
+## Update 2 (2026-03-11 — universal2 revert + fresh cache copy)
+
+**Issue 1 (go armv6l → armv6, 1,936 warnings)**: You were testing a transitional
+cache. Our current go.json has `arch: "arm"` (741 entries) with 0 `armv6` — the
+`go` legacyFieldBackport (armv6→arm) was already applied. No fix needed.
+
+**Issue 2 (universal2 expansion causing mismatches)**: Reverted the expansion
+(commit 8debd4e). `universal2` is kept as-is in the cache. You handle it in the
+Node WATERFALL. cmake.json now has 812 `universal2` entries, hugo.json 166.
+
+Cache regenerated and copied to your worktree. Please re-test.
+
 ## Update (2026-03-11 — cache copy)
 
 The cache was regenerated and now has 0 `solaris`, `illumos`, or `universal2` entries.
