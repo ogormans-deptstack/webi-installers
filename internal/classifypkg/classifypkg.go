@@ -22,7 +22,6 @@ import (
 	"github.com/webinstall/webi-installers/internal/rawcache"
 	"github.com/webinstall/webi-installers/internal/releases/bun"
 	"github.com/webinstall/webi-installers/internal/releases/chromedist"
-	"github.com/webinstall/webi-installers/internal/releases/ffmpeg"
 	"github.com/webinstall/webi-installers/internal/releases/fish"
 	"github.com/webinstall/webi-installers/internal/releases/gitea"
 	"github.com/webinstall/webi-installers/internal/releases/flutterdist"
@@ -151,8 +150,6 @@ func TagVariants(pkg string, assets []storage.Asset) {
 	switch pkg {
 	case "bun":
 		bun.TagVariants(assets)
-	case "ffmpeg":
-		ffmpeg.TagVariants(assets)
 	case "fish":
 		fish.TagVariants(assets)
 	case "git":
@@ -269,6 +266,54 @@ func ApplyConfig(assets []storage.Asset, conf *installerconf.Conf) []storage.Ass
 		out = append(out, a)
 	}
 	return out
+}
+
+// LegacyBackport translates canonical classifier output into field values
+// the Node.js legacy cache expects. The core classifier uses correct,
+// canonical values (armv6, .gz, etc.); this function remaps them for
+// backward compatibility with the production resolver.
+//
+// Call this after Package() when writing to the legacy JSON cache.
+// The new Go resolver will use canonical values directly.
+func LegacyBackport(pkg string, assets []storage.Asset) {
+	switch pkg {
+	case "go":
+		legacyBackportGo(assets)
+	case "ffmpeg":
+		legacyBackportFFmpeg(assets)
+	}
+}
+
+// legacyBackportGo remaps Go dist's arm classification.
+//
+// The Go dist API uses bare "arm" (GOARM default = 6). The classifier
+// canonicalizes this to "armv6". Production keeps the raw "arm" value
+// because normalize.js doesn't run on Go dist assets. The legacy resolver
+// expects "arm" for these assets.
+func legacyBackportGo(assets []storage.Asset) {
+	for i := range assets {
+		if assets[i].Arch == "armv6" {
+			assets[i].Arch = "arm"
+		}
+	}
+}
+
+// legacyBackportFFmpeg remaps Windows gzipped executables.
+//
+// ffmpeg-static publishes bare executables for Windows. The .gz files
+// are gzip-compressed bare executables (not tar archives). Production's
+// ffmpeg/releases.js hardcodes rel.ext = 'exe' for Windows assets.
+// The legacy resolver needs "exe" to serve these correctly.
+func legacyBackportFFmpeg(assets []storage.Asset) {
+	for i := range assets {
+		if assets[i].OS != "windows" {
+			continue
+		}
+		switch assets[i].Format {
+		case ".gz", "":
+			assets[i].Format = ".exe"
+		}
+	}
 }
 
 // ReadAllRaw reads all non-directory, non-underscore-prefixed files from
@@ -883,9 +928,7 @@ func normalizeGoArch(goarch string) string {
 	case "386":
 		return "x86"
 	case "arm":
-		// Go API uses bare "arm" — keep as-is to match production.
-		// The resolver handles arm compatibility (armv7→armv6 fallback).
-		return "arm"
+		return "armv6"
 	case "ppc64le":
 		return "ppc64le"
 	case "ppc64":
