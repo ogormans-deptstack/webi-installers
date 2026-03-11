@@ -5,17 +5,22 @@ let Builds = require('./builds.js');
 
 // Real User-Agent strings sent by webi bootstrap scripts.
 //
-// Known issues (not regressions from cache-only migration):
+// Libc taxonomy:
+//   none = static build, no runtime libc dep (often built with musl, but self-contained)
+//   musl = requires musl C/C++ runtime at runtime (e.g. node-musl)
+//   gnu  = requires glibc at runtime (crashes on musl-only/Alpine)
+//   libc = host UA value meaning "I have glibc" (not used in release metadata)
+//
+// Known issues:
 //
 // 1. WATERFALL libc vs gnu: The WATERFALL maps `libc` => ['none', 'libc']
-//    but packages with explicit gnu in filenames (Rust projects) get classified
-//    as libc='gnu'. A glibc host sending `libc` in the UA won't match `gnu`
-//    triplets. Needs a build-classifier submodule update.
+//    but never tries 'gnu'. Packages with glibc-linked builds (libc='gnu' in
+//    Go cache) won't match for hosts reporting 'libc'. Fix: update WATERFALL
+//    to `libc: ['none', 'gnu', 'libc']` in build-classifier submodule.
 //
-// 2. ANYOS/ANYARCH priority: The triplet enumeration tries ANYOS/ANYARCH
-//    before specific OS/arch. Packages whose Go cache includes source repo
-//    URLs (`.git`) as releases get matched to ANYOS before platform-specific
-//    binaries. The Go cache or selectPackage needs to handle this.
+// 2. Go cache .git regression: The Go cache includes .git source repo URLs
+//    as releases, creating ANYOS/ANYARCH triplets. These match before
+//    platform-specific binaries. Fix: exclude .git from Go cache output.
 
 let UA_CASES = [
   // === macOS (no libc issue — darwin uses libc='none') ===

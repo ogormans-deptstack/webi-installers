@@ -46,14 +46,24 @@ The Go cache filters releases more aggressively than the old Node normalize.js:
 - These are improvements — the filtered results better reflect what webi can
   actually install.
 
+### Libc Taxonomy
+
+| Value  | Meaning |
+|--------|---------|
+| `none` | Static build — no runtime libc dependency. Often built with musl but fully self-contained. Works everywhere. |
+| `musl` | Requires musl C/C++ runtime at runtime (e.g. `node-musl`). NOT the same as a static musl build. |
+| `gnu`  | Requires glibc at runtime. Crashes on musl-only systems (Alpine). |
+| `libc` | Host-reported UA value meaning "I have standard C library" (typically glibc). Not used in release metadata. |
+
 ### Known Issues Needing Resolution
 
 - **WATERFALL libc vs gnu**: The Go cache correctly uses `libc='gnu'` for
   glibc-linked Linux binaries (Rust projects like bat, rg; also node). The
   build-classifier WATERFALL maps `libc` => `['none', 'libc']` but never tries
   `gnu`, so Linux glibc hosts can't match these packages. Fix needed in
-  `host-targets.js`: `libc: ['none', 'gnu', 'libc']`. See QUESTIONS.md in the
-  Go agent worktree.
+  `host-targets.js`: `libc: ['none', 'gnu', 'libc']` (`none` first = prefer
+  static, `gnu` second = glibc host can run gnu-linked, `libc` last = fallback).
+  See QUESTIONS.md in the Go agent worktree.
 - **Go cache `.git` source URLs (regression)**: The Go cache includes `.git`
   source repo URLs as release assets. These get classified as
   `ANYOS`/`ANYARCH` and match before platform-specific binaries because
