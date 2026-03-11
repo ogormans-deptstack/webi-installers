@@ -1,0 +1,1 @@
+[{"name":"jq-linux-amd64","version":"1.8.1","lts":false,"channel":"stable","date":"2025-07-01","os":"linux","arch":"amd64","ext":"exe","download":"https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64","libc":"none"}]
