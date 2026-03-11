@@ -10,41 +10,62 @@ The Node.js server no longer fetches from upstream APIs. It reads only from
 - **builds.js**: Removed `freshenRandomPackage()` calls and background refresh
 - **builds-cacher.js**: Removed `getLatestBuilds()`, stale re-fetch, and
   `freshenRandomPackage()`. Missing cache files return empty metadata.
+- **builds-cacher.js `getProjectTypeByEntry()`**: Replaced `require(releases.js)`
+  with cache file existence check. Packages are `valid` if they have a cache
+  file, `selfhosted` if they don't. This means packages like vim-airline that
+  now have Go-generated cache are correctly served.
+- **transform-releases.js**: Legacy release API now reads from cache files
+  instead of fetching upstream. Pre-classified fields are cleared before
+  `normalize()` so the output matches the legacy format (e.g. `darwin` → `macos`,
+  versions without `v` prefix).
 
-### In Progress
+### Data Format Note
 
-- **Remove `releases.js` runtime dependency**: The `getProjectTypeByEntry()`
-  function still `require()`s each package's `releases.js` to determine if a
-  package is `valid` (has releases.js) vs `selfhosted` (no releases.js). This
-  distinction controlled whether Node fetched upstream. Now that all data comes
-  from cache, the check should use cache file existence instead.
+The Go cache uses different OS/arch names than the legacy normalize.js:
+- Go: `darwin` → normalize.js: `macos`
+- Go: `amd64` → normalize.js: `amd64` (same)
+- Go: `aarch64` → normalize.js: `arm64`
 
-### Pending
+For the legacy `/api/releases/` endpoint (`transform-releases.js`), we clear
+pre-classified fields and re-normalize from filenames to match production output.
 
-- **`transform-releases.js`**: Legacy release API. Not `require()`d anywhere in
-  this repo — called by an external HTTP server. Still fetches upstream via
-  `Releases.get()` → `require({pkg}/releases.js)` → `.latest()`. Needs to be
-  made cache-only if this API endpoint is still live.
+For the installer endpoint (`builds-cacher.js` + `serve-installer.js`), the Go
+naming is used directly — the build-classifier handles its own mappings.
+
+### Remaining Work
+
+- **`{pkg}/releases.js` files**: No longer `require()`d at runtime. They are
+  now dead code (not loaded by builds-cacher, transform-releases, or any
+  runtime path). Still useful as documentation of upstream sources. The files
+  in `_common/` (github.js, gitea.js, etc.) are also unused at runtime.
+- **`classify-one.js`**: CLI utility that still `require()`s releases.js
+  directly. This is a dev tool, not a production path.
+- **`transform-releases.js` self-test**: The `if (require.main === module)`
+  block calls `module.exports({...})` but the module exports an object. This
+  is a pre-existing bug (not caused by our changes).
 
 ## Public API Endpoints (live at webinstall.dev)
 
 Tested against production 2026-03-11:
 
-- `GET /api/releases/{pkg}.json` — Returns raw JSON array of release objects
-  (via `transform-releases.js` + `normalize.js`). Each object has: name,
-  version, lts, channel, date, os, arch, ext, download, libc.
+- `GET /api/releases/{pkg}.json` — Returns JSON with `oses`, `arches`, `libcs`,
+  `formats`, and `releases` array. Each release has: name, version, lts,
+  channel, date, os, arch, ext, download, libc. Uses `macos` not `darwin`.
 - `GET /api/releases/{pkg}.tab` — Tab-separated release data
 - `GET /{pkg}@{tag}` — Returns installer script (bash or ps1 based on UA)
+
+The HTTP routing is NOT in this repo — an external server calls into the Node
+modules (`Releases.getReleases()` and `InstallerServer.serveInstaller()`).
 
 ## Project Type Detection
 
 `builds-cacher.js:getProjectTypeByEntry()` classifies packages:
 
-| Type | Meaning | Current check |
-|------|---------|---------------|
+| Type | Meaning | Check |
+|------|---------|-------|
 | `alias` | Symlink or README has `alias: x` | symlink or README frontmatter |
-| `valid` | Has releases.js | `require(releases.js)` succeeds |
-| `selfhosted` | No releases.js | `require(releases.js)` throws MODULE_NOT_FOUND |
+| `valid` | Has cache file | `_cache/YYYY-MM/{name}.json` exists |
+| `selfhosted` | No cache file | cache file missing |
 | `hidden` | System dirs, `_*`, `.*` etc | naming convention |
 | `invalid` | No README.md | file check |
 
@@ -53,14 +74,8 @@ Tested against production 2026-03-11:
 - `selfhosted` → returns error package immediately (no cache lookup)
 - Others → throws ENOENT
 
-**Problem**: With cache-only mode, some `selfhosted` packages now have Go-generated
-cache files (vim plugins, pg-essentials, etc.) but are never served because the
-type check short-circuits them to error.
-
 ## Package Counts
 
-- **101 packages** have Go-generated cache files
-- **~97 packages** have `releases.js` files
-- **~90 packages** are `selfhosted` (README but no releases.js)
-- **13 packages** have cache but no releases.js (vim plugins, pg-essentials, etc.)
-- **5 releases.js** files have no cache (aliases: golang, ripgrep; plus _example, macos, zig.vim)
+- **99 packages** detected as `valid` (have cache files)
+- **58 packages** detected as `selfhosted` (no cache)
+- **33 packages** detected as `alias`
