@@ -15,11 +15,8 @@ let bc = BuildsCacher.create({
   caches: CACHE_DIR,
   installers: INSTALLERS_DIR,
 });
-bc.freshenRandomPackage(600 * 1000);
 
 Builds.init = async function () {
-  bc.freshenRandomPackage(600 * 1000);
-
   let dirs = await bc.getProjectsByType();
   let projNames = Object.keys(dirs.valid);
 
@@ -27,7 +24,6 @@ Builds.init = async function () {
   await Parallel.run(parallel, projNames, getAll);
   async function getAll(name) {
     void (await bc.getPackages({
-      //Releases: Releases,
       name: name,
       date: new Date(),
     }));

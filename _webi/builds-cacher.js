@@ -126,58 +126,6 @@ async function readFirstBytes(path) {
   return str;
 }
 
-let promises = {};
-async function getLatestBuilds(Releases, installersDir, cacheDir, name, date) {
-  console.info(`[INFO] getLatestBuilds: ${name}`);
-
-  if (!Releases) {
-    Releases = require(`${installersDir}/${name}/releases.js`);
-  }
-  // TODO update all releases files with module.exports.xxxx = 'foo';
-  if (!Releases.latest) {
-    Releases.latest = Releases;
-  }
-
-  let id = `${cacheDir}/${name}`;
-  if (!promises[id]) {
-    promises[id] = Promise.resolve();
-  }
-
-  promises[id] = promises[id].then(async function () {
-    return await getLatestBuildsInner(Releases, cacheDir, name, date);
-  });
-
-  return await promises[id];
-}
-
-async function getLatestBuildsInner(Releases, cacheDir, name, date) {
-  let data = await Releases.latest();
-
-  if (!date) {
-    date = new Date();
-  }
-  let isoDate = date.toISOString();
-  let yearMonth = isoDate.slice(0, 7);
-
-  // TODO hash file
-  let dataFile = `${cacheDir}/${yearMonth}/${name}.json`;
-  // TODO fsstat releases.js vs require-ing time as well
-  let tsFile = `${cacheDir}/${yearMonth}/${name}.updated.txt`;
-
-  let dirPath = Path.dirname(dataFile);
-  await Fs.mkdir(dirPath, { recursive: true });
-
-  let json = JSON.stringify(data, null, 2);
-  await Fs.writeFile(dataFile, json, 'utf8');
-
-  let seconds = date.valueOf();
-  let ms = seconds / 1000;
-  let msStr = ms.toFixed(3);
-  await Fs.writeFile(tsFile, msStr, 'utf8');
-
-  return data;
-}
-
 BuildsCacher.create = function ({ ALL_TERMS, installers, caches }) {
   let installersDir = installers;
   let cacheDir = caches;
@@ -195,7 +143,6 @@ BuildsCacher.create = function ({ ALL_TERMS, installers, caches }) {
   bc._triplets = {};
   bc._targetsByBuildIdCache = {};
   bc._caches = {};
-  bc._staleAge = 15 * 60 * 1000;
   bc._allFormats = {};
   bc._allTriplets = {};
 
@@ -317,7 +264,7 @@ BuildsCacher.create = function ({ ALL_TERMS, installers, caches }) {
 
   // Typically a package is organized by release (ex: go has 1.20, 1.21, etc),
   // but we will organize by the build (ex: go1.20-darwin-arm64.tar.gz, etc).
-  bc.getPackages = async function ({ Releases, name, date }) {
+  bc.getPackages = async function ({ name, date }) {
     if (!date) {
       date = new Date();
     }
@@ -378,7 +325,7 @@ BuildsCacher.create = function ({ ALL_TERMS, installers, caches }) {
       }
     }
     if (!projInfo) {
-      projInfo = await getLatestBuilds(Releases, installersDir, cacheDir, name);
+      return meta;
     }
     let latestProjInfo = await BuildsCacher.transformAndUpdate(
       name,
@@ -389,62 +336,7 @@ BuildsCacher.create = function ({ ALL_TERMS, installers, caches }) {
     );
     bc._caches[name] = latestProjInfo;
 
-    process.nextTick(async function () {
-      let now = date.valueOf();
-      let age = now - projInfo.updated;
-
-      let fresh = age < bc._staleAge;
-      if (fresh) {
-        return;
-      }
-
-      projInfo = await getLatestBuilds(Releases, installersDir, cacheDir, name);
-      let latestProjInfo = BuildsCacher.transformAndUpdate(
-        name,
-        projInfo,
-        meta,
-        date,
-        bc,
-      );
-      bc._caches[name] = latestProjInfo;
-    });
-
-    return projInfo;
-  };
-
-  // Makes sure that packages are updated once an hour, on average
-  bc._staleNames = [];
-  bc._freshenTimeout = null;
-  bc.freshenRandomPackage = async function (minDelay) {
-    if (!minDelay) {
-      minDelay = 15 * 1000;
-    }
-
-    if (bc._staleNames.length === 0) {
-      let dirs = await bc.getProjectsByType();
-      bc._staleNames = Object.keys(dirs.valid);
-      bc._staleNames.sort(function () {
-        return 0.5 - Math.random();
-      });
-    }
-
-    let name = bc._staleNames.pop();
-    void (await bc.getPackages({
-      //Releases: Releases,
-      name: name,
-      date: new Date(),
-    }));
-    console.info(`[INFO] freshenRandomPackage: ${name}`);
-
-    let hour = 60 * 60 * 1000;
-    let delay = minDelay;
-    let spread = hour / bc._staleNames.length;
-    let seed = Math.random();
-    delay += seed * spread;
-
-    clearTimeout(bc._freshenTimeout);
-    bc._freshenTimeout = setTimeout(bc.freshenRandomPackage, delay);
-    bc._freshenTimeout.unref();
+    return latestProjInfo;
   };
 
   /**
