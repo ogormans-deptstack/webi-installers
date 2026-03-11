@@ -28,6 +28,8 @@ cmd/
 internal/
   buildmeta/          # OS, arch, libc, format constants and enums + CompatArches
   classify/           # build artifact classification (filename/URL → target)
+  classifypkg/        # per-package pipeline: classify → tag → normalize → filter
+  installerconf/      # releases.conf parser (key=value, source inferred from key)
   httpclient/         # resilient net/http client with best-practice defaults
   lexver/             # lexicographic version parsing and sorting
   platlatest/         # per-platform latest version index (triplet → version)
@@ -278,18 +280,36 @@ Node.js server.
 - [x] `internal/releases/gittag` — git tag listing (bare clone)
 - [x] `internal/releases/nodedist` — Node.js-style dist/index.json API
 - [x] `internal/releases/node` — Node.js (official + unofficial builds)
+- [x] `internal/releases/chromedist` — Chrome/Chromedriver JSON endpoint
+- [x] `internal/releases/flutterdist` — Flutter SDK release index
+- [x] `internal/releases/golang` — Go downloads page JSON
+- [x] `internal/releases/gpgdist` — GnuPG FTP directory scraper
+- [x] `internal/releases/hashicorp` — HashiCorp releases API
+- [x] `internal/releases/iterm2dist` — iTerm2 downloads page scraper
+- [x] `internal/releases/juliadist` — Julia versions JSON API
+- [x] `internal/releases/mariadbdist` — MariaDB downloads page
+- [x] `internal/releases/zigdist` — Zig downloads JSON
+- [x] Per-package releases packages: bun, fish, git, lsd, ollama, postgres,
+  pwsh, watchexec, xcaddy (variant tagging, version normalization, legacy data)
 - [x] `internal/rawcache` — double-buffered raw upstream response storage
 - [x] `internal/classify` — build artifact classifier (80/20, filename→target)
 - [x] `internal/platlatest` — per-platform latest version index
 - [x] End-to-end: fetch complete histories for all 103 packages
-- [x] `internal/installerconf` — flat key=value config parser with typed struct
+- [x] `internal/installerconf` — key=value config parser (source inferred from key)
+- [x] `internal/classifypkg` — full classification pipeline:
+  classifySource → TagVariants → NormalizeVersions → processGitTagHEAD →
+  ApplyConfig → appendLegacy
+- [x] Per-package variant taggers (pwsh, ollama, bun, node)
+- [x] Per-package version normalizers (git, lf, go, postgres, watchexec)
+- [x] Gittag HEAD handling (tagless→v{datetime}, mixed→exclude from legacy)
+- [x] Legacy releases (postgres EnterpriseDB 10.x–12.x via appendLegacy)
 - [ ] Resolver (platlatest + installer config + CompatArches → pick binary)
 - [x] `internal/storage` — interface definition (Asset, PackageData, Store, RefreshTx)
-- [x] `internal/storage/legacy.go` — LegacyAsset/LegacyCache for Node.js compat
-- [x] `internal/storage/fsstore` — filesystem implementation (atomic writes)
-- [x] `cmd/webicached` — cache daemon (fetch → classify → write, all sources)
+- [x] `internal/storage/legacy.go` — LegacyAsset/LegacyCache with variant/format filtering
+- [x] `internal/storage/fsstore` — filesystem implementation (atomic writes, alias symlinks)
+- [x] `cmd/webicached` — cache daemon (round-robin refresh, rate limiting, symlink detection)
 - [x] `cmd/comparecache` — Go vs Node.js cache comparison tool
-- [ ] Comparison review: see `COMPARISON.md` for per-package checklist
+- [x] Legacy cache generation verified for 101 packages
 
 **Integration point:** `webicached` writes the same `_cache/` JSON format. The
 Node.js server can read from it. Zero-risk cutover for release fetching.
@@ -334,22 +354,42 @@ the website/cheat sheets (if it ever did — that may be a separate app).
 Each package has a `{pkg}/releases.conf` — a flat `key = value` file parsed by
 `internal/installerconf`. This replaces the per-package `releases.js` from Node.js.
 
+The source type is inferred from the primary key:
+
 ```
-source = github
-owner = BurntSushi
-repo = ripgrep
+github_repo = BurntSushi/ripgrep
 ```
 
-Source types: `github`, `gitea`, `gittag`, `nodedist`, `chromedist`, `flutterdist`,
-`golang`, `gpgdist`, `hashicorp`, `iterm2dist`, `juliadist`, `mariadbdist`, `zigdist`.
+```
+git_url = https://github.com/tpope/vim-commentary.git
+```
+
+```
+gitea_repo = root/pathman
+base_url = https://git.rootprojects.org
+```
+
+```
+hashicorp_product = terraform
+```
+
+One-off dist sources use an explicit `source` key:
+
+```
+source = nodedist
+url = https://nodejs.org/download/release
+```
+
+Source types: `github`, `gitea`, `gittag`, `hashicorp`, `nodedist`, `chromedist`,
+`flutterdist`, `golang`, `gpgdist`, `iterm2dist`, `juliadist`, `mariadbdist`,
+`zigdist`.
 
 **Multi-source packages** (like `node`, which merges official + unofficial builds)
 are not yet supported by the config format. Current workaround: separate packages
 (`node-official`, `node-unofficial`). Redesign needed — see Open Questions.
 
-Unknown keys go into `conf.Extra` (a `map[string]string`), which is used for
-source-specific settings like `product = terraform` (hashicorp) or
-`alias_of = dashcore` (aliases).
+Unknown keys go into `conf.Extra` (a `map[string]string`). The `alias_of` key
+marks a package as a symlink to another (e.g. `alias_of = dashcore`).
 
 ### Asset Model and `Extra` Field
 
@@ -413,11 +453,13 @@ by default.
 ### Legacy Export Filtering
 
 During migration, `fsstore` writes JSON in the Node.js `_cache/` format. The
-Node.js server reads this directly. Two filters apply at export time:
+Node.js server reads this directly. Two filters apply at export time
+(`storage.ExportLegacy`):
 
-1. **Build variants**: Assets with non-empty `Extra` are stripped (Node.js
-   doesn't know about rocm/jetpack/fxdependent)
-2. **Format**: Any formats that leaked through classification are stripped
+1. **Build variants**: Assets with non-empty `Variants` are stripped (Node.js
+   doesn't know about rocm/jetpack/fxdependent/head/appimage)
+2. **Format**: Assets with formats the Node.js server doesn't recognize are
+   stripped (recognized: tar.gz, zip, xz, pkg, msi, exe, dmg, git, etc.)
 
 This keeps the primary Go pipeline complete while the legacy path stays compat.
 
@@ -447,13 +489,10 @@ behavior must be preserved for backward compatibility.
 ## Open Questions
 
 - [ ] **Multi-source config**: `node` needs both official + unofficial URLs.
-  Current releases.conf only supports one `source`. Proposed:
-  `github_source = owner repo`, `nodedist_source = url`, `git_source = url` —
-  multiple source directives per package, not mutually exclusive.
+  Current releases.conf only supports one `source`. Node's classifier handles
+  this via a special case (`unofficial_url` in Extra). Needs a cleaner design.
 - [ ] What's the deployment topology? Single binary serving both roles? Separate
   processes? Kubernetes pods?
-- [ ] Rate limiting for GitHub API calls in `webicached` — how to coordinate
-  across multiple instances?
 - [ ] Per-installer config format: what structure best expresses version-ranged
   libc overrides, arch fallback overrides, and nonstandard asset naming? Go
   struct + TOML/YAML? Go code (compiled into webicached)?
@@ -469,7 +508,18 @@ behavior must be preserved for backward compatibility.
   Go. The Go pipeline fetches and classifies everything directly.
 - **Asset.Extra vs Variants?** `Extra` stays as version-related sort info.
   New `Variants []string` field captures build qualifiers (rocm, installer,
-  fxdependent). Resolver deprioritizes assets with any variants.
+  fxdependent, head, appimage, win-version-specific). Resolver deprioritizes
+  assets with any variants.
+- **Rate limiting for GitHub API calls?** `webicached` uses round-robin refresh
+  (one package per tick) with `--page-delay` (default 2s) via a `delayTransport`
+  wrapper. No coordination needed — single instance by design.
+- **Config format for source/owner/repo?** Collapsed into single keys:
+  `github_repo = owner/repo`, `git_url = ...`, `gitea_repo = owner/repo`,
+  `hashicorp_product = name`. Source type inferred from the key.
+- **Per-package version normalization?** Lives in Go code per-package (e.g.
+  `internal/releases/postgres/versions.go`), not in config. Each package that
+  needs it implements a `NormalizeVersions([]Asset)` function called from
+  `classifypkg.NormalizeVersions`.
 
 ## Current Node.js Architecture (Reference)
 
