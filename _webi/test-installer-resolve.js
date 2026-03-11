@@ -65,6 +65,48 @@ let UA_CASES = [
     expectExt: 'tar.gz',
   },
 
+  // === macOS universal2 — packages where recent darwin builds are universal-only ===
+  // These currently resolve to ancient versions because universal2 entries are
+  // dropped by the classifier. The GOER's legacy export needs to emit these
+  // with arch: "x86_64" so the classifier accepts them. The darwin WATERFALL
+  // (aarch64 falls back to x86_64) handles aarch64 users.
+  {
+    label: 'cmake macOS arm64 (universal2)',
+    pkg: 'cmake',
+    ua: 'aarch64/unknown Darwin/24.2.0 libc',
+    expectOs: 'darwin',
+    expectExt: 'tar.gz',
+    expectMinVersion: '4.0.0',
+    known: true,
+  },
+  {
+    label: 'cmake macOS amd64 (universal2)',
+    pkg: 'cmake',
+    ua: 'x86_64/unknown Darwin/23.0.0 libc',
+    expectOs: 'darwin',
+    expectExt: 'tar.gz',
+    expectMinVersion: '4.0.0',
+    known: true,
+  },
+  {
+    label: 'hugo macOS arm64 (universal2)',
+    pkg: 'hugo',
+    ua: 'aarch64/unknown Darwin/24.2.0 libc',
+    expectOs: 'darwin',
+    expectExt: 'tar.gz',
+    expectMinVersion: '0.140.0',
+    known: true,
+  },
+  {
+    label: 'hugo macOS amd64 (universal2)',
+    pkg: 'hugo',
+    ua: 'x86_64/unknown Darwin/23.0.0 libc',
+    expectOs: 'darwin',
+    expectExt: 'tar.gz',
+    expectMinVersion: '0.140.0',
+    known: true,
+  },
+
   // === Windows ===
   {
     label: 'bat Windows amd64',
@@ -184,11 +226,22 @@ async function main() {
 
       // Known issue — just verify it fails as expected
       if (tc.known) {
-        if (pkg.channel === 'error' || !pkg.download || pkg.download.includes('doesntexist') || pkg.ext === 'git') {
-          console.log(`  KNOWN ${tc.label}`);
+        let isError = pkg.channel === 'error' || !pkg.download || pkg.download.includes('doesntexist') || pkg.ext === 'git';
+        let isStale = false;
+        if (tc.expectMinVersion && pkg.version) {
+          let got = pkg.version.replace(/^v/, '').split('.').map(Number);
+          let want = tc.expectMinVersion.split('.').map(Number);
+          for (let i = 0; i < want.length; i++) {
+            if ((got[i] || 0) < want[i]) { isStale = true; break; }
+            if ((got[i] || 0) > want[i]) { break; }
+          }
+        }
+        if (isError || isStale) {
+          let detail = isStale ? `stale v${pkg.version} < v${tc.expectMinVersion}` : '';
+          console.log(`  KNOWN ${tc.label}${detail ? ': ' + detail : ''}`);
           knowns++;
         } else {
-          console.log(`  PASS ${tc.label} (known issue resolved!): v${pkg.version} .${pkg.ext}`);
+          console.log(`  PASS ${tc.label} (known issue resolved!): v${pkg.version} .${pkg.ext} ${(pkg.download || '').split('/').pop()}`);
           passes++;
         }
         continue;
