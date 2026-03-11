@@ -49,7 +49,7 @@ let UA_CASES = [
     ua: 'aarch64/unknown Darwin/24.2.0 libc',
     expectOs: 'darwin',
     expectArch: 'aarch64',
-    expectExt: 'tar.gz',
+    expectExt: 'tar.xz',
   },
   {
     label: 'rg macOS arm64',
@@ -159,7 +159,7 @@ async function main() {
         unameAgent: tc.ua,
         projectName: tc.pkg,
         tag: 'stable',
-        formats: [],
+        formats: ['tar', 'exe', 'zip', 'xz', 'dmg'],
         libc: '',
       });
 

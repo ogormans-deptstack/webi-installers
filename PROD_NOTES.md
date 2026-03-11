@@ -54,9 +54,12 @@ The Go cache filters releases more aggressively than the old Node normalize.js:
   `gnu`, so Linux glibc hosts can't match these packages. Fix needed in
   `host-targets.js`: `libc: ['none', 'gnu', 'libc']`. See QUESTIONS.md in the
   Go agent worktree.
-- **ANYOS/ANYARCH .git priority**: Packages like caddy and jq have `.git`
-  source URLs classified as `ANYOS`/`ANYARCH`. The triplet enumeration tries
-  ANYOS before specific OS, so `.git` matches before platform-specific binaries.
+- **Go cache `.git` source URLs (regression)**: The Go cache includes `.git`
+  source repo URLs as release assets. These get classified as
+  `ANYOS`/`ANYARCH` and match before platform-specific binaries because
+  the triplet enumeration tries ANYOS first. Production doesn't have this
+  issue — the old `releases.js` fetchers never included `.git` URLs. Fix:
+  exclude `.git` URLs from Go cache output.
 
 ### Known Pre-existing Issues
 
@@ -66,6 +69,11 @@ The Go cache filters releases more aggressively than the old Node normalize.js:
   "wrong arch" warnings in the build-classifier (armhf vs armv6).
 - **Go illumos/solaris warnings**: Go's illumos and solaris builds trigger
   "wrong os" warnings (expected `sunos`).
+- **webinstall.dev `serve-releases.js` libc bug**: Line 37 calls
+  `UaDetect.arch(req.query.libc)` instead of `UaDetect.libc(...)`. This
+  means the libc query parameter always evaluates to `'error'`, effectively
+  disabling libc filtering in the release API. (Bug is in the webinstall.dev
+  repo, not webi-installers.)
 
 ## Public API Endpoints
 
