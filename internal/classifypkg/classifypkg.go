@@ -32,6 +32,7 @@ import (
 	"github.com/webinstall/webi-installers/internal/releases/node"
 	"github.com/webinstall/webi-installers/internal/releases/ollama"
 	"github.com/webinstall/webi-installers/internal/releases/pwsh"
+	"github.com/webinstall/webi-installers/internal/releases/watchexec"
 	"github.com/webinstall/webi-installers/internal/releases/xcaddy"
 	"github.com/webinstall/webi-installers/internal/releases/zigdist"
 	"github.com/webinstall/webi-installers/internal/storage"
@@ -100,6 +101,8 @@ func NormalizeVersions(pkg string, assets []storage.Asset) {
 				assets[i].Version = "0." + v[1:] + ".0"
 			}
 		}
+	case "watchexec":
+		watchexec.NormalizeVersions(assets)
 	}
 }
 
