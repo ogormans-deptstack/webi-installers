@@ -445,6 +445,16 @@ func classifyGitHubSource(pkg string, conf *installerconf.Conf, d *rawcache.Dir)
 				Date:     date,
 			})
 		}
+		if conf.GitURL != "" {
+			assets = append(assets, storage.Asset{
+				Filename: repo + "-" + tag,
+				Version:  version,
+				Channel:  channel,
+				Format:   "git",
+				Download: conf.GitURL,
+				Date:     date,
+			})
+		}
 	}
 	return assets, nil
 }

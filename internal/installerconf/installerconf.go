@@ -74,6 +74,11 @@ type Conf struct {
 	// (e.g. a Gitea instance or nodedist index URL).
 	BaseURL string
 
+	// GitURL is the git clone URL for source-installable packages.
+	// Present alongside github_source/gitea_source to provide a
+	// git clone fallback in addition to release tarballs.
+	GitURL string
+
 	// TagPrefix filters releases in monorepos. Only tags starting with
 	// this prefix are included, and the prefix is stripped from the
 	// version string. Example: "tools/monorel/"
@@ -159,6 +164,11 @@ func Read(path string) (*Conf, error) {
 		c.Source = raw["source"]
 		c.BaseURL = raw["url"]
 	}
+
+	// git_url can appear alongside any source type (e.g. github_source)
+	// to provide a git clone fallback. When it's the only key, it's the
+	// primary source (gittag).
+	c.GitURL = raw["git_url"]
 
 	c.TagPrefix = raw["tag_prefix"]
 
