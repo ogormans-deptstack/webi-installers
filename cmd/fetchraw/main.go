@@ -400,8 +400,24 @@ func fetchFlutter(ctx context.Context, client *http.Client, cacheRoot, pkgName s
 			return fmt.Errorf("flutterdist: %w", err)
 		}
 		for _, rel := range batch {
-			// Use version+channel+os as the tag to distinguish per-OS entries.
+			// Use version+channel+os+arch as the tag. The arch is embedded
+			// in the archive path (e.g. flutter_macos_arm64_3.0.0-stable.zip
+			// vs flutter_macos_3.0.0-stable.zip for universal/x64).
+			arch := ""
+			base := filepath.Base(rel.Archive)
+			prefix := "flutter_" + rel.OS + "_"
+			if after, ok := strings.CutPrefix(base, prefix); ok {
+				if !strings.HasPrefix(after, rel.Version) {
+					// There's an arch segment between OS and version.
+					if idx := strings.Index(after, "_"); idx > 0 {
+						arch = after[:idx]
+					}
+				}
+			}
 			tag := fmt.Sprintf("%s-%s-%s", rel.Version, rel.Channel, rel.OS)
+			if arch != "" {
+				tag += "-" + arch
+			}
 			data, err := json.Marshal(rel)
 			if err != nil {
 				return fmt.Errorf("flutterdist marshal %s: %w", tag, err)
