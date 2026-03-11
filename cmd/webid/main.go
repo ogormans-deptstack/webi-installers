@@ -61,6 +61,10 @@ func main() {
 	// Legacy API routes (Node.js compat).
 	mux.HandleFunc("GET /api/releases/{rest...}", srv.handleReleasesAPI)
 
+	// New API routes (v1).
+	mux.HandleFunc("GET /v1/releases/{rest...}", srv.handleV1Releases)
+	mux.HandleFunc("GET /v1/resolve/{rest...}", srv.handleV1Resolve)
+
 	// Debug endpoint.
 	mux.HandleFunc("GET /api/debug", srv.handleDebug)
 
