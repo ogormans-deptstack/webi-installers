@@ -31,6 +31,11 @@ All 7 issues investigated and fixed in commit `aec6869`. Cache regenerated. Summ
 
 The 3 known production bugs (iterm2 channel, postgres ext, terraform alpha) are unchanged.
 
+## Update (2026-03-11 — cache copy)
+
+The cache was regenerated and now has 0 `solaris`, `illumos`, or `universal2` entries.
+Copied to your worktree at `ref-webi-go-2/_cache/2026-03/` — please re-run your tests.
+
 ## Known gap
 
 - **atomicparsley**: `AtomicParsleyAlpine.zip` not detected as musl (no word boundary before "Alpine"). Needs package-specific handling. Low priority.
