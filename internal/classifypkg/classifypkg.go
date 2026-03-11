@@ -38,6 +38,32 @@ import (
 	"github.com/webinstall/webi-installers/internal/storage"
 )
 
+// channelFromVersion infers a release channel from the version string.
+// Many GitHub releases have pre-release versions (rc, beta, alpha, dev,
+// preview) but don't set the prerelease boolean in the API.
+func channelFromVersion(version string) string {
+	v := strings.ToLower(version)
+	switch {
+	case strings.Contains(v, "-rc") || strings.Contains(v, ".rc"):
+		return "rc"
+	case strings.Contains(v, "-beta") || strings.Contains(v, ".beta"):
+		return "beta"
+	case strings.Contains(v, "-alpha") || strings.Contains(v, ".alpha"):
+		return "alpha"
+	case strings.Contains(v, "-dev") || strings.Contains(v, ".dev"):
+		return "dev"
+	case strings.Contains(v, "-preview") || strings.Contains(v, ".preview"):
+		return "preview"
+	case strings.Contains(v, "-pre") || strings.Contains(v, ".pre"):
+		return "beta"
+	case strings.Contains(v, "-nightly"):
+		return "nightly"
+	case strings.Contains(v, "-canary"):
+		return "canary"
+	}
+	return "stable"
+}
+
 // Package classifies raw upstream data into assets, tags variants,
 // and applies config-driven filters. This is the full classify pipeline
 // for a single package.
@@ -243,6 +269,8 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 		channel := "stable"
 		if rel.Prerelease {
 			channel = "beta"
+		} else {
+			channel = channelFromVersion(version)
 		}
 
 		date := ""
@@ -532,7 +560,7 @@ func classifyGitTag(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 		assets = append(assets, storage.Asset{
 			Filename: filename,
 			Version:  version,
-			Channel:  "stable",
+			Channel:  channelFromVersion(version),
 			Format:   "git",
 			Download: gitURL,
 			Date:     date,
@@ -577,6 +605,8 @@ func classifyGitea(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]sto
 		channel := "stable"
 		if rel.Prerelease {
 			channel = "beta"
+		} else {
+			channel = channelFromVersion(rel.TagName)
 		}
 		date := ""
 		if len(rel.PublishedAt) >= 10 {
@@ -775,15 +805,7 @@ func classifyHashiCorp(d *rawcache.Dir) ([]storage.Asset, error) {
 			continue
 		}
 
-		channel := "stable"
-		v := ver.Version
-		if strings.Contains(v, "-rc") {
-			channel = "rc"
-		} else if strings.Contains(v, "-beta") {
-			channel = "beta"
-		} else if strings.Contains(v, "-alpha") {
-			channel = "alpha"
-		}
+		channel := channelFromVersion(ver.Version)
 
 		for _, b := range ver.Builds {
 			r := classify.Filename(b.Filename)
