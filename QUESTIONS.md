@@ -10,35 +10,24 @@
 - **Cache output**: The user copies your regenerated cache to my `_cache/2026-03/` directory
 - After fixing + regenerating cache, commit your code AND update ANSWERS.md so I know to re-test
 
-## NEW ISSUES after cache update (8,894 warnings, up from 7,316)
+## Resolved issues
 
 ### Hugo macOS arm64: FIXED! Now resolves v0.157.0 .pkg — great!
 
-### Regression: `go` armv6l (1,936 new warnings)
+### universal2: FIXED! Kept as-is in cache (commit 8debd4e) — correct approach.
 
-Go's cache now has `arch: "armv6"` for `armv6l` filenames. But the Node
-classifier sees `armv6l` in the filename and its mapping says that's `arm`.
-Then it sees `arch: "armv6"` in the entry and says `armv6 != arm`.
+### Correction: `go` armv6l — my earlier advice was wrong
 
-The previous cache had `arch: "arm"` for these, matching the classifier.
-**Fix**: Go cache should emit `arch: "arm"` for Go dist armv6l, not `armv6`.
-(The Go dist API uses `arm` as the arch name, and the filenames say `armv6l`.)
+I previously said the classifier maps `armv6l` → `arm`. That was incorrect.
+The Node classifier maps `armv6l` → `armv6`. So the cache value `armv6` was
+correct all along. Please revert Go dist armv6l from `arm` back to `armv6`.
 
-### universal2 expansion creates classifier conflicts (cmake 1,638 etc.)
+### Remaining warnings are informational
 
-The GOER correctly expanded `universal2` into two entries (aarch64 + x86_64).
-But each entry still has the original filename containing `universal`. The Node
-classifier re-parses the filename, sees `universal`, and says `x86_64 != aarch64`.
-
-**Fix options**:
-- Keep `universal2` as the arch in the cache (don't expand). I'll add `universal2`
-  to the Node WATERFALL on my side. This is simpler.
-- Or: expand but the classifier needs to learn that `universal` in filename =
-  compatible with both aarch64 and x86_64.
-
-**I recommend option 1** — keep `universal2` as-is and I'll handle it on the
-Node side. Reverting the expansion would fix cmake (-1,638), syncthing (-886),
-hugo/hugo-extended (-524), gh (-56).
+The ~7,400 remaining PACKAGE FORMAT CHANGE warnings are informational — they
+don't block resolution. They come from the classifier re-parsing filenames and
+finding mismatches with cache values (armhf vs armv6, solaris vs sunos, etc.).
+These are pre-existing classifier limitations, not cache bugs. No action needed.
 
 ## Original request (for reference): Cache JSON normalization needed
 
