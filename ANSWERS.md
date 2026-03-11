@@ -55,6 +55,12 @@ git assets for old versions are never selected when newer binaries exist.
 
 **No fix needed** in the Go resolver or classifier. The behavior is correct.
 
+**Update**: Confirmed that regenerating the cache alone does NOT fix the Node.js
+resolver. With the old ANYOS-first enumeration, jq and caddy still resolve to
+`.git`, and rg still gets v0.1.6. The fix is in the Node.js resolver's triplet
+enumeration order — specific OS must come before ANYOS, and versions must iterate
+newest-first. The cache data is correct; the resolution logic was wrong.
+
 ## Re: Issue 4 — darwin-universal (Hugo)
 
 Already handled correctly on the Go side:
