@@ -22,6 +22,7 @@ import (
 	"github.com/webinstall/webi-installers/internal/rawcache"
 	"github.com/webinstall/webi-installers/internal/releases/bun"
 	"github.com/webinstall/webi-installers/internal/releases/chromedist"
+	"github.com/webinstall/webi-installers/internal/releases/ffmpeg"
 	"github.com/webinstall/webi-installers/internal/releases/fish"
 	"github.com/webinstall/webi-installers/internal/releases/gitea"
 	"github.com/webinstall/webi-installers/internal/releases/flutterdist"
@@ -37,6 +38,7 @@ import (
 	"github.com/webinstall/webi-installers/internal/releases/ollama"
 	"github.com/webinstall/webi-installers/internal/releases/pwsh"
 	"github.com/webinstall/webi-installers/internal/releases/postgres"
+	"github.com/webinstall/webi-installers/internal/releases/sass"
 	"github.com/webinstall/webi-installers/internal/releases/watchexec"
 	"github.com/webinstall/webi-installers/internal/releases/xcaddy"
 	"github.com/webinstall/webi-installers/internal/releases/zigdist"
@@ -149,6 +151,8 @@ func TagVariants(pkg string, assets []storage.Asset) {
 	switch pkg {
 	case "bun":
 		bun.TagVariants(assets)
+	case "ffmpeg":
+		ffmpeg.TagVariants(assets)
 	case "fish":
 		fish.TagVariants(assets)
 	case "git":
@@ -163,6 +167,8 @@ func TagVariants(pkg string, assets []storage.Asset) {
 		ollama.TagVariants(assets)
 	case "pwsh":
 		pwsh.TagVariants(assets)
+	case "sass":
+		sass.TagVariants(assets)
 	case "xcaddy":
 		xcaddy.TagVariants(assets)
 	}
@@ -877,7 +883,9 @@ func normalizeGoArch(goarch string) string {
 	case "386":
 		return "x86"
 	case "arm":
-		return "armv6"
+		// Go API uses bare "arm" — keep as-is to match production.
+		// The resolver handles arm compatibility (armv7→armv6 fallback).
+		return "arm"
 	case "ppc64le":
 		return "ppc64le"
 	case "ppc64":
