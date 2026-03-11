@@ -8,26 +8,67 @@ import (
 	"github.com/webinstall/webi-installers/internal/installerconf"
 )
 
-func TestSimpleGitHub(t *testing.T) {
+func TestGitHubReleases(t *testing.T) {
+	c := confFromString(t, `
+github_releases = sharkdp/bat
+`)
+	assertEqual(t, "Source", c.Source, "github")
+	assertEqual(t, "Owner", c.Owner, "sharkdp")
+	assertEqual(t, "Repo", c.Repo, "bat")
+	assertEqual(t, "BaseURL", c.BaseURL, "https://github.com")
+	assertEqual(t, "TagPrefix", c.TagPrefix, "")
+	if len(c.VersionPrefixes) != 0 {
+		t.Errorf("VersionPrefixes = %v, want empty", c.VersionPrefixes)
+	}
+	if len(c.Exclude) != 0 {
+		t.Errorf("Exclude = %v, want empty", c.Exclude)
+	}
+}
+
+func TestGitHubReleasesFullURL(t *testing.T) {
+	c := confFromString(t, `
+github_releases = https://github.com/sharkdp/bat
+`)
+	assertEqual(t, "Source", c.Source, "github")
+	assertEqual(t, "BaseURL", c.BaseURL, "https://github.com")
+	assertEqual(t, "Owner", c.Owner, "sharkdp")
+	assertEqual(t, "Repo", c.Repo, "bat")
+}
+
+func TestGitHubRepoBackCompat(t *testing.T) {
 	c := confFromString(t, `
 github_repo = sharkdp/bat
 `)
 	assertEqual(t, "Source", c.Source, "github")
 	assertEqual(t, "Owner", c.Owner, "sharkdp")
 	assertEqual(t, "Repo", c.Repo, "bat")
-	assertEqual(t, "TagPrefix", c.TagPrefix, "")
-	if len(c.VersionPrefixes) != 0 {
-		t.Errorf("VersionPrefixes = %v, want empty", c.VersionPrefixes)
-	}
+}
 
-	if len(c.Exclude) != 0 {
-		t.Errorf("Exclude = %v, want empty", c.Exclude)
-	}
+func TestGitHubSources(t *testing.T) {
+	c := confFromString(t, `
+github_sources = BeyondCodeBootcamp/aliasman
+git_url = https://github.com/BeyondCodeBootcamp/aliasman.git
+`)
+	assertEqual(t, "Source", c.Source, "githubsource")
+	assertEqual(t, "Owner", c.Owner, "BeyondCodeBootcamp")
+	assertEqual(t, "Repo", c.Repo, "aliasman")
+	assertEqual(t, "GitURL", c.GitURL, "https://github.com/BeyondCodeBootcamp/aliasman.git")
+}
+
+func TestGitHubSourcesFullURL(t *testing.T) {
+	c := confFromString(t, `
+github_sources = https://github.com/BeyondCodeBootcamp/aliasman
+git_url = https://github.com/BeyondCodeBootcamp/aliasman.git
+`)
+	assertEqual(t, "Source", c.Source, "githubsource")
+	assertEqual(t, "BaseURL", c.BaseURL, "https://github.com")
+	assertEqual(t, "Owner", c.Owner, "BeyondCodeBootcamp")
+	assertEqual(t, "Repo", c.Repo, "aliasman")
 }
 
 func TestVersionPrefixes(t *testing.T) {
 	c := confFromString(t, `
-github_repo = jqlang/jq
+github_releases = jqlang/jq
 version_prefixes = jq- cli-
 `)
 	if len(c.VersionPrefixes) != 2 {
@@ -39,7 +80,7 @@ version_prefixes = jq- cli-
 
 func TestExclude(t *testing.T) {
 	c := confFromString(t, `
-github_repo = gohugoio/hugo
+github_releases = gohugoio/hugo
 exclude = _extended_ Linux-64bit
 `)
 	if len(c.Exclude) != 2 {
@@ -51,7 +92,7 @@ exclude = _extended_ Linux-64bit
 
 func TestMonorepoTagPrefix(t *testing.T) {
 	c := confFromString(t, `
-github_repo = therootcompany/golib
+github_releases = therootcompany/golib
 tag_prefix = tools/monorel/
 `)
 	assertEqual(t, "TagPrefix", c.TagPrefix, "tools/monorel/")
@@ -66,7 +107,28 @@ url = https://nodejs.org/download/release
 	assertEqual(t, "BaseURL", c.BaseURL, "https://nodejs.org/download/release")
 }
 
-func TestGiteaBaseURL(t *testing.T) {
+func TestGiteaReleases(t *testing.T) {
+	c := confFromString(t, `
+gitea_releases = https://git.rootprojects.org/root/pathman
+`)
+	assertEqual(t, "Source", c.Source, "gitea")
+	assertEqual(t, "BaseURL", c.BaseURL, "https://git.rootprojects.org")
+	assertEqual(t, "Owner", c.Owner, "root")
+	assertEqual(t, "Repo", c.Repo, "pathman")
+}
+
+func TestGiteaReleasesWithBaseURL(t *testing.T) {
+	c := confFromString(t, `
+gitea_releases = root/pathman
+base_url = https://git.rootprojects.org
+`)
+	assertEqual(t, "Source", c.Source, "gitea")
+	assertEqual(t, "BaseURL", c.BaseURL, "https://git.rootprojects.org")
+	assertEqual(t, "Owner", c.Owner, "root")
+	assertEqual(t, "Repo", c.Repo, "pathman")
+}
+
+func TestGiteaRepoBackCompat(t *testing.T) {
 	c := confFromString(t, `
 gitea_repo = xorm/xorm
 base_url = https://gitea.com
@@ -76,10 +138,30 @@ base_url = https://gitea.com
 	assertEqual(t, "Owner", c.Owner, "xorm")
 }
 
+func TestGitLabReleases(t *testing.T) {
+	c := confFromString(t, `
+gitlab_releases = owner/repo
+`)
+	assertEqual(t, "Source", c.Source, "gitlab")
+	assertEqual(t, "BaseURL", c.BaseURL, "https://gitlab.com")
+	assertEqual(t, "Owner", c.Owner, "owner")
+	assertEqual(t, "Repo", c.Repo, "repo")
+}
+
+func TestGitLabReleasesFullURL(t *testing.T) {
+	c := confFromString(t, `
+gitlab_releases = https://gitlab.example.com/myorg/myrepo
+`)
+	assertEqual(t, "Source", c.Source, "gitlab")
+	assertEqual(t, "BaseURL", c.BaseURL, "https://gitlab.example.com")
+	assertEqual(t, "Owner", c.Owner, "myorg")
+	assertEqual(t, "Repo", c.Repo, "myrepo")
+}
+
 func TestBlanksAndComments(t *testing.T) {
 	c := confFromString(t, `
 # Hugo config
-github_repo = foo/bar
+github_releases = foo/bar
 
 # exclude line
 exclude = extended
@@ -91,7 +173,7 @@ exclude = extended
 
 func TestExtraKeys(t *testing.T) {
 	c := confFromString(t, `
-github_repo = foo/bar
+github_releases = foo/bar
 custom_thing = hello
 `)
 	if c.Extra == nil || c.Extra["custom_thing"] != "hello" {
@@ -101,7 +183,7 @@ custom_thing = hello
 
 func TestAssetExcludeAlias(t *testing.T) {
 	c := confFromString(t, `
-github_repo = gohugoio/hugo
+github_releases = gohugoio/hugo
 asset_exclude = extended
 `)
 	if len(c.Exclude) != 1 {
@@ -112,7 +194,7 @@ asset_exclude = extended
 
 func TestVariants(t *testing.T) {
 	c := confFromString(t, `
-github_repo = jmorganca/ollama
+github_releases = jmorganca/ollama
 variants = rocm jetpack5 jetpack6
 `)
 	if len(c.Variants) != 3 {
@@ -124,7 +206,7 @@ variants = rocm jetpack5 jetpack6
 }
 
 func TestEmptyExclude(t *testing.T) {
-	c := confFromString(t, "github_repo = foo/bar\n")
+	c := confFromString(t, "github_releases = foo/bar\n")
 	if c.Exclude != nil {
 		t.Errorf("Exclude = %v, want nil", c.Exclude)
 	}

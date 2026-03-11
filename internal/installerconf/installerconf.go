@@ -6,24 +6,30 @@
 //
 // The source type is inferred from the primary key:
 //
-// GitHub releases (covers ~70% of packages):
+// GitHub releases (binary assets):
 //
-//	github_repo = sharkdp/bat
+//	github_releases = sharkdp/bat
+//	github_releases = https://github.com/sharkdp/bat
+//
+// GitHub sources (tarball/zipball/git for source-installable packages):
+//
+//	github_sources = BeyondCodeBootcamp/aliasman
+//	git_url = https://github.com/BeyondCodeBootcamp/aliasman.git
 //
 // With version prefix stripping (jq tags are "jq-1.7.1"):
 //
-//	github_repo = jqlang/jq
+//	github_releases = jqlang/jq
 //	version_prefixes = jq-
 //
 // With filename exclusions and variant documentation:
 //
-//	github_repo = gohugoio/hugo
+//	github_releases = gohugoio/hugo
 //	exclude = _extended_ Linux-64bit
 //	variants = extended extended_withdeploy
 //
 // Monorepo with tag prefix:
 //
-//	github_repo = therootcompany/golib
+//	github_releases = therootcompany/golib
 //	tag_prefix = tools/monorel/
 //
 // Git tag sources (vim plugins, etc.):
@@ -32,8 +38,13 @@
 //
 // Gitea releases:
 //
-//	gitea_repo = root/pathman
+//	gitea_releases = root/pathman
 //	base_url = https://git.rootprojects.org
+//
+// GitLab releases:
+//
+//	gitlab_releases = owner/repo
+//	base_url = https://gitlab.com
 //
 // HashiCorp releases:
 //
@@ -54,13 +65,15 @@ package installerconf
 import (
 	"bufio"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 )
 
 // Conf holds the parsed per-package release configuration.
 type Conf struct {
-	// Source is the fetch source type: "github", "gitea", "gitlab",
+	// Source is the fetch source type: "github", "githubsource",
+	// "gitea", "giteasource", "gitlab", "gitlabsource",
 	// "gittag", "nodedist", etc.
 	Source string
 
@@ -75,7 +88,7 @@ type Conf struct {
 	BaseURL string
 
 	// GitURL is the git clone URL for source-installable packages.
-	// Present alongside github_source/gitea_source to provide a
+	// Present alongside github_sources/gitea_sources to provide a
 	// git clone fallback in addition to release tarballs.
 	GitURL string
 
@@ -114,6 +127,25 @@ type Conf struct {
 	Extra map[string]string
 }
 
+// parseRepoRef parses a value that is either "owner/repo" or a full URL
+// like "https://github.com/owner/repo". Returns baseURL, owner, repo.
+// For short form, baseURL is empty (caller uses the default for the forge).
+// For full URL form, baseURL is the scheme+host (e.g. "https://github.com").
+func parseRepoRef(val, defaultBase string) (baseURL, owner, repo string) {
+	if strings.Contains(val, "://") {
+		u, err := url.Parse(val)
+		if err == nil {
+			baseURL = u.Scheme + "://" + u.Host
+			path := strings.Trim(u.Path, "/")
+			owner, repo, _ = strings.Cut(path, "/")
+			return baseURL, owner, repo
+		}
+	}
+	// Short form: "owner/repo"
+	owner, repo, _ = strings.Cut(val, "/")
+	return defaultBase, owner, repo
+}
+
 // Read parses a releases.conf file.
 func Read(path string) (*Conf, error) {
 	f, err := os.Open(path)
@@ -143,29 +175,65 @@ func Read(path string) (*Conf, error) {
 
 	// Infer source from primary key, falling back to explicit "source".
 	switch {
-	case raw["github_repo"] != "":
+	// GitHub binary releases.
+	case raw["github_releases"] != "":
 		c.Source = "github"
-		c.Owner, c.Repo, _ = strings.Cut(raw["github_repo"], "/")
-	case raw["github_source"] != "":
+		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["github_releases"], "https://github.com")
+	case raw["github_repo"] != "":
+		// Back-compat alias.
+		c.Source = "github"
+		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["github_repo"], "https://github.com")
+
+	// GitHub source tarballs.
+	case raw["github_sources"] != "":
 		c.Source = "githubsource"
-		c.Owner, c.Repo, _ = strings.Cut(raw["github_source"], "/")
+		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["github_sources"], "https://github.com")
+	case raw["github_source"] != "":
+		// Back-compat alias.
+		c.Source = "githubsource"
+		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["github_source"], "https://github.com")
+
+	// Gitea binary releases (self-hosted only — requires full URL or base_url).
+	case raw["gitea_releases"] != "":
+		c.Source = "gitea"
+		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["gitea_releases"], raw["base_url"])
+	case raw["gitea_repo"] != "":
+		// Back-compat alias.
+		c.Source = "gitea"
+		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["gitea_repo"], raw["base_url"])
+
+	// Gitea source tarballs (self-hosted only).
+	case raw["gitea_sources"] != "":
+		c.Source = "giteasource"
+		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["gitea_sources"], raw["base_url"])
+
+	// GitLab binary releases (defaults to gitlab.com).
+	case raw["gitlab_releases"] != "":
+		c.Source = "gitlab"
+		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["gitlab_releases"], "https://gitlab.com")
+
+	// GitLab source tarballs (defaults to gitlab.com).
+	case raw["gitlab_sources"] != "":
+		c.Source = "gitlabsource"
+		c.BaseURL, c.Owner, c.Repo = parseRepoRef(raw["gitlab_sources"], "https://gitlab.com")
+
+	// Git tag enumeration.
 	case raw["git_url"] != "":
 		c.Source = "gittag"
 		c.BaseURL = raw["git_url"]
-	case raw["gitea_repo"] != "":
-		c.Source = "gitea"
-		c.Owner, c.Repo, _ = strings.Cut(raw["gitea_repo"], "/")
-		c.BaseURL = raw["base_url"]
+
+	// HashiCorp.
 	case raw["hashicorp_product"] != "":
 		c.Source = "hashicorp"
 		c.Repo = raw["hashicorp_product"]
+
 	default:
 		// One-off dist sources (nodedist, zigdist, etc.).
 		c.Source = raw["source"]
 		c.BaseURL = raw["url"]
 	}
 
-	// git_url can appear alongside any source type (e.g. github_source)
+	// git_url can appear alongside any source type (e.g. github_sources)
 	// to provide a git clone fallback. When it's the only key, it's the
 	// primary source (gittag).
 	c.GitURL = raw["git_url"]
@@ -195,10 +263,16 @@ func Read(path string) (*Conf, error) {
 	// Collect unrecognized keys.
 	known := map[string]bool{
 		"source":             true,
+		"github_releases":    true,
 		"github_repo":        true,
+		"github_sources":     true,
 		"github_source":      true,
-		"git_url":            true,
+		"gitea_releases":     true,
 		"gitea_repo":         true,
+		"gitea_sources":      true,
+		"gitlab_releases":    true,
+		"gitlab_sources":     true,
+		"git_url":            true,
 		"hashicorp_product":  true,
 		"base_url":           true,
 		"url":                true,
