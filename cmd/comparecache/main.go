@@ -63,9 +63,16 @@ func main() {
 	diffsOnly := flag.Bool("diffs", false, "only show packages with asset differences (skip matches)")
 	latest := flag.Bool("latest", false, "only compare latest version in each cache")
 	windowed := flag.Bool("windowed", false, "limit Go versions to the Node.js version range (2nd to 2nd-to-last)")
-	sample := flag.Int("sample", 0, "pick N extra random packages beyond any named ones")
+	sample := flag.Int("sample", 0, "for each package diff, show N randomly sampled assets (implies -windowed -diffs)")
 	flag.Parse()
 	filterPkgs := flag.Args()
+
+	// -sample implies -windowed and -diffs so we focus on real classification
+	// differences, not version-depth noise.
+	if *sample > 0 {
+		*windowed = true
+		*diffsOnly = true
+	}
 
 	totalStart := time.Now()
 
@@ -85,39 +92,18 @@ func main() {
 	// Discover all packages across both caches.
 	discoverStart := time.Now()
 	allPkgs := discoverPackages(livePath, goPath)
-	if len(filterPkgs) > 0 || *sample > 0 {
+	if len(filterPkgs) > 0 {
 		nameSet := make(map[string]bool, len(filterPkgs))
 		for _, n := range filterPkgs {
 			nameSet[n] = true
 		}
-
-		var selected []string
-		var pool []string
+		var filtered []string
 		for _, p := range allPkgs {
 			if nameSet[p] {
-				selected = append(selected, p)
-			} else {
-				pool = append(pool, p)
+				filtered = append(filtered, p)
 			}
 		}
-
-		// Pick random extras from the remaining pool.
-		if *sample > 0 && len(pool) > 0 {
-			rand.Shuffle(len(pool), func(i, j int) {
-				pool[i], pool[j] = pool[j], pool[i]
-			})
-			n := *sample
-			if n > len(pool) {
-				n = len(pool)
-			}
-			extras := pool[:n]
-			sort.Strings(extras)
-			selected = append(selected, extras...)
-			log.Printf("sampled %d extra: %s", n, strings.Join(extras, ", "))
-		}
-
-		sort.Strings(selected)
-		allPkgs = selected
+		allPkgs = filtered
 	}
 	log.Printf("discovered %d packages in %s", len(allPkgs), time.Since(discoverStart))
 
@@ -133,7 +119,7 @@ func main() {
 	if *summary {
 		printSummary(diffs)
 	} else {
-		printDetails(diffs, *diffsOnly)
+		printDetails(diffs, *diffsOnly, *sample)
 	}
 
 	log.Printf("total: %s", time.Since(totalStart))
@@ -636,7 +622,7 @@ func printSummary(diffs []packageDiff) {
 	}
 }
 
-func printDetails(diffs []packageDiff, diffsOnly bool) {
+func printDetails(diffs []packageDiff, diffsOnly bool, sampleN int) {
 	for _, d := range diffs {
 		if diffsOnly && len(d.OnlyInLive) == 0 && len(d.OnlyInGo) == 0 {
 			continue
@@ -647,36 +633,46 @@ func printDetails(diffs []packageDiff, diffsOnly bool) {
 		fmt.Printf("  Live: %d assets, %d versions  |  Go: %d assets, %d versions\n",
 			d.LiveCount, len(d.VersionsLive), d.GoCount, len(d.VersionsGo))
 
-		if len(d.OnlyInLive) > 0 {
-			fmt.Printf("  Only in LIVE (%d):\n", len(d.OnlyInLive))
-			for _, f := range d.OnlyInLive {
-				if len(d.OnlyInLive) > 20 {
-					fmt.Printf("    - %s\n", f)
-					if f == d.OnlyInLive[19] {
-						fmt.Printf("    ... and %d more\n", len(d.OnlyInLive)-20)
-						break
-					}
-				} else {
-					fmt.Printf("    - %s\n", f)
-				}
-			}
-		}
-
-		if len(d.OnlyInGo) > 0 {
-			fmt.Printf("  Only in Go (%d):\n", len(d.OnlyInGo))
-			for _, f := range d.OnlyInGo {
-				if len(d.OnlyInGo) > 20 {
-					fmt.Printf("    - %s\n", f)
-					if f == d.OnlyInGo[19] {
-						fmt.Printf("    ... and %d more\n", len(d.OnlyInGo)-20)
-						break
-					}
-				} else {
-					fmt.Printf("    - %s\n", f)
-				}
-			}
-		}
+		printAssetList("Only in LIVE", d.OnlyInLive, sampleN)
+		printAssetList("Only in Go", d.OnlyInGo, sampleN)
 
 		fmt.Println()
+	}
+}
+
+// printAssetList prints a list of asset filenames, optionally sampling N at
+// random. When sampleN > 0 and the list is longer, it picks N random items
+// so you can spot classification bugs across the full range instead of only
+// seeing the first alphabetical entries.
+func printAssetList(label string, items []string, sampleN int) {
+	if len(items) == 0 {
+		return
+	}
+
+	fmt.Printf("  %s (%d):\n", label, len(items))
+
+	if sampleN > 0 && len(items) > sampleN {
+		// Shuffle a copy, take first N, then sort for readable output.
+		sampled := make([]string, len(items))
+		copy(sampled, items)
+		rand.Shuffle(len(sampled), func(i, j int) {
+			sampled[i], sampled[j] = sampled[j], sampled[i]
+		})
+		picked := sampled[:sampleN]
+		sort.Strings(picked)
+		for _, f := range picked {
+			fmt.Printf("    - %s\n", f)
+		}
+		fmt.Printf("    ... sampled %d of %d (run again for different sample)\n", sampleN, len(items))
+		return
+	}
+
+	limit := 20
+	for i, f := range items {
+		if i >= limit {
+			fmt.Printf("    ... and %d more\n", len(items)-limit)
+			break
+		}
+		fmt.Printf("    - %s\n", f)
 	}
 }
