@@ -248,6 +248,8 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 		return d
 	}
 
+	normVersion := normalizeVersionFunc(pkg)
+
 	// Collect filenames by version. If filter is non-nil, skip filenames it rejects.
 	extractVersionFiles := func(ce *cacheEntry, filter func(string) bool) (map[string]map[string]bool, []string) {
 		vf := make(map[string]map[string]bool)
@@ -256,10 +258,11 @@ func compare(livePath, goPath, pkg string, latestOnly, windowed bool) packageDif
 			if filter != nil && !filter(name) {
 				continue
 			}
-			if vf[r.Version] == nil {
-				vf[r.Version] = make(map[string]bool)
+			ver := normVersion(r.Version)
+			if vf[ver] == nil {
+				vf[ver] = make(map[string]bool)
 			}
-			vf[r.Version][name] = true
+			vf[ver][name] = true
 		}
 		var versions []string
 		for v := range vf {
@@ -517,6 +520,31 @@ func isLiveNoise(name string) bool {
 	}
 
 	return false
+}
+
+// normalizeVersionFunc returns a version normalizer for a given package.
+// Most packages return the identity function. Some (like git) need
+// version string normalization to match across Go and Node.js caches.
+func normalizeVersionFunc(pkg string) func(string) string {
+	switch pkg {
+	case "git":
+		return func(v string) string {
+			// Git for Windows: v2.53.0.windows.1 → v2.53.0
+			//                  v2.53.0.windows.2 → v2.53.0.2
+			idx := strings.Index(v, ".windows.")
+			if idx < 0 {
+				return v
+			}
+			suffix := v[idx+len(".windows."):]
+			base := v[:idx]
+			if suffix == "1" {
+				return base
+			}
+			return base + "." + suffix
+		}
+	default:
+		return func(v string) string { return v }
+	}
 }
 
 func printSummary(diffs []packageDiff) {

@@ -47,6 +47,7 @@ func Package(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]storage.A
 	}
 
 	TagVariants(pkg, assets)
+	NormalizeVersions(pkg, assets)
 	assets = ApplyConfig(assets, conf)
 	return assets, nil
 }
@@ -82,6 +83,15 @@ func classifySource(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 		return classifyZigDist(d)
 	default:
 		return nil, nil
+	}
+}
+
+// NormalizeVersions applies package-specific version normalization.
+// For example, Git for Windows strips ".windows.N" from version strings.
+func NormalizeVersions(pkg string, assets []storage.Asset) {
+	switch pkg {
+	case "git":
+		git.NormalizeVersions(assets)
 	}
 }
 
