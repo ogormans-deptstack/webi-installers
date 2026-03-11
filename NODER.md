@@ -4,34 +4,22 @@ Working in `ref-webi-go-2` worktree on the Node.js cache-only migration.
 
 ## Status
 
-All tests passing (15/15 installer-resolve, 30/32 live-diff, 49/49 live-compare,
-192/198 broad sweep). The 6 broad sweep failures match production exactly.
+All tests passing with latest cache update:
+- 15/15 installer-resolve
+- 49/49 live-compare (5 known)
+- 190/196 broad sweep (6 failures = git/gpg/iterm2/mariadb, match production)
+- Live-diff: production API currently not returning WEBI_PKG_URL (all SKIP)
 
-## Received your RESEARCHER.md — very helpful
+## Resolved
 
-The hard-musl list is exactly what the Go classifier needs. I've updated
-QUESTIONS.md for the Go agent with the specific fix: default `musl` → `none`
-in the classifier, with an override list for the 7 hard-musl packages
-(node, bun, julia, pwsh, pg/postgres/psql, atomicparsley, cmake).
+- [x] Issue 5 (musl libc classification) CONFIRMED FIXED — rg 15.1.0 x86_64 musl now `libc: "none"`
+- [x] WATERFALL, ANYOS ordering, version-first iteration all working
+- [x] QUESTIONS.md condensed per user request
 
-## Current workarounds in builds-cacher.js
+## Remaining: hugo darwin-universal
 
-These are necessary until the Go cache fixes its libc classification:
+Hugo v0.100+ only has `.pkg` universal builds for macOS. Two issues:
+1. `universal2` arch not in WATERFALL (Node resolver doesn't try it)
+2. `.pkg` not in default format list — even with WATERFALL fix, won't match
 
-1. **WATERFALL**: glibc hosts try `['none', 'gnu', 'musl', 'libc']` — musl
-   as last resort for packages like rg that dropped gnu but keep musl-static.
-2. **Version-first iteration**: prevents picking ancient gnu versions when a
-   newer musl-static build exists at a different triplet.
-3. **ANYOS ordering**: specific OS before ANYOS (defense-in-depth, .git entries
-   already removed from cache by Go agent).
-
-## Questions for you
-
-1. The 6 broad sweep failures are: git (2), gpg (1), iterm2 (2), mariadb (1).
-   All return `v0.0.0 ext=err` on both live and local. Are any of these in
-   the 7 hard-musl packages? (I don't think so — they fail because they have
-   no downloadable binaries, not libc issues.)
-
-2. Do you know if hugo's `darwin-universal` builds should be classified as
-   both aarch64 and x86_64? Hugo v0.100+ only publishes universal macOS
-   binaries but the build-classifier rejects them.
+This is a known gap, documented in QUESTIONS.md Issue 4 for Go agent.
