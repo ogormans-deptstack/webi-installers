@@ -16,73 +16,81 @@
 behavior is preserved as-is. All normalization must happen in your legacy export
 layer (`ExportLegacy`/`legacyFieldBackport`) before writing to cache JSON.
 
-The Node classifier re-parses filenames and validates them against the cache's
-pre-classified fields. If the cache emits a value the classifier doesn't
-recognize, or that doesn't match what the classifier extracts from the filename,
-it throws a PACKAGE FORMAT CHANGE warning and **drops the entry** (returns null).
+The Node classifier re-parses download filenames and validates them against the
+cache's pre-classified fields. If the cache value doesn't match what the classifier
+extracts from the filename, it **drops the entry** (returns null). Dropped entries
+cannot be resolved for any user.
 
-## 6,958 warnings remaining — need fixes in legacy export (was 7,606)
+## 6,958 warnings = 6,958 dropped entries. Fixes needed:
 
-Your legacy export layer needs to filter or translate entries so the Node
-classifier can process them. Entries that cause mismatches get dropped from
-resolution. Here's what needs fixing:
+### 1. universal2 (1,492 dropped) — cmake, syncthing, hugo, hugo-extended, gh
 
-### 1. universal2 (1,492 warnings) — cmake, syncthing, hugo, hugo-extended, gh
+**Impact**: cmake macOS resolves to v3.19.1 (stable is v4.2.3). hugo macOS
+resolves to v0.101.0 (stable is v0.157.0). Years of releases lost.
 
-Cache has `arch: "universal2"`. Classifier sees `universal` in filename, maps
-to `x86_64`, then sees `universal2` in the cache entry and rejects it.
+Cache has `arch: "universal2"`. Classifier sees `universal` in filename → maps
+to `x86_64` → `universal2 != x86_64` → dropped.
 
-Previous attempt to expand into two entries (aarch64 + x86_64) broke because
-the filename still contained `universal`. **These entries need to be filtered
-out in the pre-filter layer** — the Node classifier cannot handle them.
+**Fix**: In ExportLegacy, emit universal2 entries with `arch: "x86_64"`. The
+classifier will see `universal` in filename → detect `x86_64` → match cache →
+entry survives. The darwin WATERFALL already falls back from aarch64 to x86_64,
+so aarch64 users still get these builds.
 
-### 2. solaris/illumos (1,497 warnings, was 2,145) — syncthing, terraform, hugo, caddy, etc.
+I added 4 known-failure tests for this (cmake + hugo, both aarch64 and x86_64).
 
-Commit ed5239a dropped 648 — progress! But 1,497 remain. Cache has `os: "sunos"`
-but download URL contains `solaris`/`illumos`. Classifier re-parses, detects
-`solaris`, sees `sunos`, rejects. **Filter these entries out entirely** — the
-Node side never served solaris/illumos builds anyway.
+### 2. solaris/illumos (1,497 dropped) — go, syncthing, terraform, hugo, caddy, etc.
 
-### 3. ARM variant mismatches (~1,000 warnings) — bat, delta, fd, caddy, dashcore, etc.
+**The sunos translation is the bug.** The classifier recognizes `solaris`,
+`illumos`, AND `sunos` as distinct OS values. Node.js releases use `sunos` in
+filenames and have zero warnings.
 
-| Cache value | Classifier detects from filename | Count | Example filename |
+The problem: other packages use `solaris`/`illumos` in filenames, but your
+legacy export translates them to `sunos`. Filename says `solaris`, cache says
+`sunos` → mismatch → dropped.
+
+**Fix**: Keep the original OS values from the filenames. Don't translate to sunos.
+- Filename has `solaris` → cache should say `os: "solaris"`
+- Filename has `illumos` → cache should say `os: "illumos"`
+- Filename has `sunos` → cache should say `os: "sunos"` (node — already correct)
+
+### 3. ARM variant mismatches (~1,000 dropped) — bat, delta, fd, caddy, dashcore
+
+The cache arch must match what the classifier extracts from the filename:
+
+| Filename pattern | Classifier detects | Cache should say | Count |
 |---|---|---|---|
-| `armv6` | `armhf` (from `gnueabihf`) | 443 | `bat-v0.9.0-arm-unknown-linux-gnueabihf.tar.gz` |
-| `armv6` | `armel` (from `armel` in filename) | 424 | `caddy_linux_armel.tar.gz` |
-| `armv5` | `armel` (from `armv5` → armel mapping) | 523 | `caddy_linux_armv5.tar.gz` |
-| `armv6` | `armv7` (wrong arch in cache?) | 90 | various |
-| `armv7` | `armhf` | 26 | various |
-| `armv7` | `armv7a` | 14 | various |
+| `arm-unknown-linux-gnueabihf` | `armhf` | `armhf` | 443 |
+| `linux_armel` | `armel` | `armel` | 424 |
+| `linux_armv5` | `armel` | `armel` | 523 |
+| various armv7a | `armv7a` | `armv7a` | 14 |
 
-These need the cache arch to match what the Node classifier extracts:
-- `gnueabihf` in filename → classifier says `armhf` → cache should say `armhf`
-- `armel` in filename → classifier says `armel` → cache should say `armel`
-- `armv5` in filename → classifier says `armel` → cache should say `armel`
-- `armv7a` in filename → classifier says `armv7a` → cache should say `armv7a`
+**Fix**: In ExportLegacy, don't normalize ARM arch names. Keep what the
+classifier will detect from the filename: `armhf`, `armel`, `armv7a`.
 
-### 4. android (355 warnings) — sass, lf, fzf, runzip, uuidv7
+### 4. android (355 dropped) — sass, lf, fzf, runzip, uuidv7
 
-Cache has `os: "android"`. Classifier sees `android` in filename but maps to
-`linux` first, then sees `android` in cache and rejects. **Filter these out** —
-the Node side doesn't serve android builds.
+Cache has `os: "android"`. Classifier sees `android` in filename but internally
+maps to `linux` first, then sees `android` in cache → `linux != android` → dropped.
 
-### 5. Minor (44 warnings)
+**Fix**: Drop android entries from legacy export. Node side doesn't serve android.
 
-- `sttr` .pkg (18): upstream bug, `.pkg` mapped to darwin but file is linux. Not fixable.
-- mips/ppc variants (26): `mips64r6`→`mips64`, `mips64r6el`→`mips64`, etc.
+### 5. Minor (44 dropped)
 
-### Test results (latest cache, 16:30)
+- `sttr` .pkg (18): upstream bug, not fixable
+- mips64r6/mips64r6el → `mips64` (24): translate in legacy export
+- x86_64_v2 → `x86_64` (2): translate in legacy export
 
-- **15/15** installer-resolve
-- **49/49** live-compare (5 known — improvements over production)
-- **190/196** broad sweep (6 expected: git/gpg/iterm2/mariadb have no binaries)
-- **6,958** PACKAGE FORMAT CHANGE warnings (down from 7,606)
+### Test results (latest cache, 16:34)
+
+- **15/15** installer-resolve (+ 4 known: cmake/hugo universal2)
+- **49/49** live-compare (5 known)
+- **190/196** broad sweep (6 expected)
+- **6,958** PACKAGE FORMAT CHANGE warnings (= dropped entries)
 
 ## Previously resolved
 
 - [x] Hugo macOS arm64 — resolves v0.157.0 .pkg
 - [x] go armv6l — cache emits `armv6` (commit 9a391ad)
-- [x] solaris/illumos → sunos (commit aec6869)
 - [x] armel → armv6, winx64 → windows (commit aec6869)
 - [x] Issues 1-3, 5: WATERFALL, .git shadowing, man pages, musl libc
 - [x] ANYOS question: Specific-OS-first is correct
