@@ -34,3 +34,23 @@ in the Node.js resolver/filter logic, not in the cache data.
 The Go cache including `.git` source URLs is actually fine — some tools (like
 vim plugins) ARE installed via git clone. The classifier tags them correctly with
 empty OS/Arch/Libc.
+
+## Update on git assets (from user feedback + investigation)
+
+I audited all packages in the cache. Git assets appear in 39 packages:
+
+- **Vim plugins** (expected): vim-airline, vim-ale, vim-nerdtree, etc. — these
+  ARE installed via git clone. Correct behavior.
+- **Binary packages with old source-only releases**: jq (3 git @ v1.0-1.2),
+  shellcheck (17 git @ v0.1-v0.4.5), caddy (2 git @ v0.11.2, v2.0.0-beta7).
+  These are releases that had no binary uploads on GitHub.
+
+The git assets come from `classifyGitHub` in `classifypkg.go`, line 413. They
+are ONLY added when `len(rel.Assets) == 0` (no binary uploads). This is correct:
+source-only GitHub releases get tarball + zipball + git entries.
+
+**Tested**: `jq` resolves to `jq-macos-arm64` v1.8.1 (binary), NOT to any git
+entry. The resolver's version-descending + platform-first-then-any order means
+git assets for old versions are never selected when newer binaries exist.
+
+**No fix needed** in the Go resolver or classifier. The behavior is correct.

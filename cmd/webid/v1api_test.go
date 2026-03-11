@@ -194,6 +194,36 @@ func TestV1ResolveTSV(t *testing.T) {
 	}
 }
 
+// TestV1ResolveJQ verifies jq resolves to binaries, not git.
+func TestV1ResolveJQ(t *testing.T) {
+	srv, ts := newTestServer(t)
+
+	pkg := "jq"
+	if srv.getPackage(pkg) == nil {
+		t.Skipf("package %s not in cache", pkg)
+	}
+
+	code, body := get(t, ts, "/v1/resolve/"+pkg+".json?os=darwin&arch=aarch64")
+	if code != 200 {
+		t.Fatalf("status %d: %s", code, body)
+	}
+
+	var result v1ResolveResult
+	if err := json.Unmarshal([]byte(body), &result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if result.Format == "git" {
+		t.Errorf("resolved to git instead of binary: %+v", result)
+	}
+	if result.OS == "" {
+		t.Errorf("resolved to empty OS (git asset): %+v", result)
+	}
+
+	t.Logf("jq resolved: version=%s os=%s arch=%s format=%s → %s",
+		result.Version, result.OS, result.Arch, result.Format, result.Download)
+}
+
 // TestV1ReleasesFilterOS verifies OS filtering works.
 func TestV1ReleasesFilterOS(t *testing.T) {
 	srv, ts := newTestServer(t)
