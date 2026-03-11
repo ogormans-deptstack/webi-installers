@@ -30,6 +30,11 @@ type Store struct {
 	root string
 }
 
+// Root returns the store's root directory path.
+func (s *Store) Root() string {
+	return s.root
+}
+
 // New creates a Store rooted at the given directory.
 // The directory is created if it doesn't exist.
 func New(root string) (*Store, error) {
