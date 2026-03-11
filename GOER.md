@@ -2,20 +2,32 @@
 
 ## Completed
 
-- [x] **Libc classification** (`47419b7`): Rust `-unknown-linux-musl` → `libc='none'`
-- [x] **Hard-musl verified**: node, bun, pwsh, julia, postgres all keep `libc='musl'`
-- [x] **Windows gnu→none** (`a3685b8`): MinGW is self-contained, classified as `none`
-- [x] **install.sh padding** (`a3685b8`): 8-space indent matches production template
-- [x] **PowerShell rendering** (`9095b34`): `render.PowerShell()` + webid wiring + tests
-- [x] **Three fetch strategies**: `github` / `githubsource` / `gittag`
-- [x] **Config key rename**: `github_releases` / `github_sources` with full URL support
-- [x] **All tests pass**, cache regenerated
+- [x] Libc classification: Rust static musl → `none`, hard-musl packages keep `musl`
+- [x] Windows gnu→none: MinGW self-contained
+- [x] install.sh 8-space padding, PowerShell rendering
+- [x] pg asset_filter: server-only assets (includes client)
+- [x] comparecache field-level diffs: os/arch/libc/ext/channel with equivalence matching
+
+## comparecache findings (real diffs after equivalence)
+
+| Package | Field | Issue |
+|---------|-------|-------|
+| go | os | `illumos`/`solaris` → Go maps both to `sunos`, prod keeps distinct |
+| go | arch | bare `arm` ambiguous — Windows=arm64, FreeBSD/Plan9=armv6 |
+| sass | arch | bare `arm` = armv7 (Dart), Go defaults to armv6 |
+| ffmpeg | ext | Windows `.gz` = gzipped exe, prod says `exe` |
+| postgres | ext | legacy EDB: prod says `tar`, Go says `tar.gz` |
+| terraform | channel | `alpha` correctly detected by Go, prod misses it |
+| iterm2 | channel | old versions differ |
+
+## Question for Researcher
+
+Re: ANYOS-first triplet order — you say production does `['ANYOS', 'posix_2017', 'posix_2024', hostTarget.os]`.
+Go currently does specific-OS-first: `[osStr, 'posix_2024', 'posix_2017', 'ANYOS', '']`.
+
+**Is ANYOS-first correct for production?** That would mean a platform-agnostic build (e.g. git repo) is preferred over a native binary. That seems wrong for most packages. Can you double-check builds-cacher.js and confirm the actual iteration order that reaches the resolution logic?
 
 ## Known gaps
 
-- **atomicparsley**: `AtomicParsleyAlpine.zip` — "Alpine" has no word boundary, not detected as musl. Needs package-specific handling.
-- **Hugo .pkg**: macOS v0.153+ only ships `.pkg`. Template doesn't support extraction. Latent bug in production too.
-
-## What's next
-
-No remaining TODOs in codebase. Let me know if you have new questions or findings.
+- **atomicparsley**: `AtomicParsleyAlpine.zip` — needs package-specific musl handling
+- **Hugo .pkg**: macOS v0.153+ only ships `.pkg`. Latent bug in both Go and production.
