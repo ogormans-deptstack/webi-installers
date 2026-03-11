@@ -519,6 +519,12 @@ func isLiveNoise(name string) bool {
 		}
 	}
 
+	// Linux binaries for packages where Node.js only kept macOS .app.zip.
+	// Go correctly includes these as installable on Linux.
+	if strings.HasPrefix(lower, "fish-") && strings.Contains(lower, "-linux-") {
+		return true
+	}
+
 	return false
 }
 
