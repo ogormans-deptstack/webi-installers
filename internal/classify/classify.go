@@ -77,7 +77,11 @@ var osPatterns = []struct {
 	{buildmeta.OSOpenBSD, regexp.MustCompile(`(?i)` + b + `openbsd` + bEnd)},
 	{buildmeta.OSNetBSD, regexp.MustCompile(`(?i)` + b + `netbsd` + bEnd)},
 	{buildmeta.OSDragonFly, regexp.MustCompile(`(?i)` + b + `dragonfly(?:bsd)?` + bEnd)},
-	{buildmeta.OSSunOS, regexp.MustCompile(`(?i)` + b + `(?:sunos|solaris|illumos)` + bEnd)},
+	// solaris, illumos, and sunos are distinct OS values in the Node build-classifier.
+	// Keep them separate so the legacy cache matches what the classifier extracts.
+	{buildmeta.OSSolaris, regexp.MustCompile(`(?i)` + b + `solaris` + bEnd)},
+	{buildmeta.OSIllumos, regexp.MustCompile(`(?i)` + b + `illumos` + bEnd)},
+	{buildmeta.OSSunOS, regexp.MustCompile(`(?i)` + b + `sunos` + bEnd)},
 	{buildmeta.OSAIX, regexp.MustCompile(`(?i)` + b + `aix` + bEnd)},
 	{buildmeta.OSAndroid, regexp.MustCompile(`(?i)` + b + `android` + bEnd)},
 	{buildmeta.OSPlan9, regexp.MustCompile(`(?i)` + b + `plan9` + bEnd)},
@@ -102,9 +106,9 @@ var archPatterns = []struct {
 	// Universal/fat binaries before specific arches.
 	{buildmeta.ArchUniversal2, regexp.MustCompile(`(?i)` + b + `(?:universal2?|fat)` + bEnd)},
 	// amd64 micro-levels before baseline — "amd64v3" must not fall through to amd64.
-	{buildmeta.ArchAMD64v4, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v4|amd64v4|v4-amd64)`)},
-	{buildmeta.ArchAMD64v3, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v3|amd64v3|v3-amd64)`)},
-	{buildmeta.ArchAMD64v2, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v2|amd64v2|v2-amd64)`)},
+	{buildmeta.ArchAMD64v4, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v4|amd64[_-]?v4|v4-amd64)`)},
+	{buildmeta.ArchAMD64v3, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v3|amd64[_-]?v3|v3-amd64)`)},
+	{buildmeta.ArchAMD64v2, regexp.MustCompile(`(?i)(?:x86[_-]64[_-]v2|amd64[_-]?v2|v2-amd64)`)},
 	// amd64 baseline before x86 — "x86_64" must not match as x86.
 	{buildmeta.ArchAMD64, regexp.MustCompile(`(?i)(?:x86[_-]64|amd64|x64|64-?bit)`)},
 	// arm64 before armv7/armv6 — "aarch64" must not match as arm.
@@ -119,6 +123,9 @@ var archPatterns = []struct {
 	{buildmeta.ArchRISCV64, regexp.MustCompile(`(?i)riscv64`)},
 	{buildmeta.ArchS390X, regexp.MustCompile(`(?i)s390x`)},
 	{buildmeta.ArchLoong64, regexp.MustCompile(`(?i)loong(?:arch)?64`)},
+	// mips64r6 before mips64 — "mips64r6" contains "mips64" as a prefix.
+	{buildmeta.ArchMIPS64R6EL, regexp.MustCompile(`(?i)mips64r6e(?:l|le)`)},
+	{buildmeta.ArchMIPS64R6, regexp.MustCompile(`(?i)mips64r6`)},
 	{buildmeta.ArchMIPS64LE, regexp.MustCompile(`(?i)mips64(?:el|le)`)},
 	{buildmeta.ArchMIPS64, regexp.MustCompile(`(?i)mips64`)},
 	{buildmeta.ArchMIPSLE, regexp.MustCompile(`(?i)mips(?:el|le)`)},

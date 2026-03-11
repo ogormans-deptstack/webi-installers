@@ -82,14 +82,18 @@ func (a Asset) toLegacy() LegacyAsset {
 //   - universal2/universal1 → x86_64: classifier maps "universal" in filename
 //     to x86_64. The darwin WATERFALL falls back aarch64→x86_64, so arm64
 //     users still receive these builds.
-//   - x86_64_v2 → x86_64: classifier doesn't recognize micro-arch level suffixes.
-//   - mips64r6/mips64r6el → mips64: MIPS Release 6 variants map to the base arch.
-//   - ARM (filename-based): gnueabihf/armhf→armhf, armel→armel, armv5→armel,
-//     armv7a→armv7a. Go normalizes these; Node classifier preserves the
-//     original Debian/Rust naming. See legacyARMArchFromFilename.
+//   - mipsle → mipsel: classifier normalizes both spellings to "mipsel".
+//   - mips64le → mips64el: classifier normalizes both spellings to "mips64el".
+//   - ARM (filename-based): explicit armvN takes priority over ABI tags;
+//     gnueabihf/armhf→armhf, armel→armel, armv5→armel, armv7a→armv7a.
+//     Go normalizes these; Node classifier preserves the original naming.
+//     See legacyARMArchFromFilename.
 //
 // Note: solaris/illumos/sunos are kept as-is. The build-classifier (triplet.js)
 // recognizes all three as distinct values, and the live cache uses them directly.
+//
+// Note: x86_64_v2/v3/v4 and mips64r6/mips64r6el are kept as-is. The
+// build-classifier knows these exact values and expects them to match.
 //
 // Package-specific rules replicate per-package overrides in production's releases.js:
 //   - ffmpeg: Windows .gz → .exe  (prod releases.js: rel.ext = 'exe')
@@ -99,14 +103,12 @@ func legacyFieldBackport(pkg string, a Asset) Asset {
 		a.Arch = "x86_64"
 	}
 
-	// x86_64 micro-arch levels: classifier doesn't know these suffixes.
-	if a.Arch == "x86_64_v2" || a.Arch == "x86_64_v3" || a.Arch == "x86_64_v4" {
-		a.Arch = "x86_64"
+	// MIPS spelling normalization: classifier maps both spellings to the "el" form.
+	if a.Arch == "mipsle" {
+		a.Arch = "mipsel"
 	}
-
-	// MIPS Release 6 variants: map to the base mips64 arch.
-	if a.Arch == "mips64r6" || a.Arch == "mips64r6el" {
-		a.Arch = "mips64"
+	if a.Arch == "mips64le" {
+		a.Arch = "mips64el"
 	}
 
 	// ARM arch: the Node classifier re-parses filenames and expects the cache
@@ -136,17 +138,46 @@ func legacyFieldBackport(pkg string, a Asset) Asset {
 // Go canonical arch value already matches what the classifier would extract.
 //
 // The Node classifier's extraction rules differ from Go's normalization:
-//   - gnueabihf (Rust triplet) / armhf (Debian) → "armhf" (not "armv6" or "armv7")
+//   - armv7a (explicit) → "armv7a" (not "armv7")
+//   - armv7 (explicit, e.g. "armv7-unknown-linux-gnueabihf") → "armv7"
+//     The explicit version number takes priority over the ABI suffix.
+//   - arm-5 / arm-7 (Gitea naming: "linux-arm-5", "linux-arm-7") → "armel" / "armv7"
+//     patternToTerms converts "arm-5" → "armv5" and "arm-7" → "armv7".
+//   - armv6hf (shellcheck naming) → "armhf" (tpm['armv6hf'] = ARMHF)
+//   - gnueabihf (Rust triplet, no explicit armvN) → "armhf"
+//   - armhf (Debian armhf) → "armhf"
 //   - armel (Debian soft-float ABI) → "armel" (not "armv6")
-//   - armv5 → "armel" (Node tiered map: armv5 falls back to armel)
-//   - armv7a → "armv7a" (not "armv7")
+//   - armv5 (explicit) → "armel" (Node tiered map: armv5 falls back to armel)
 func legacyARMArchFromFilename(filename string) string {
 	lower := strings.ToLower(filename)
-	if strings.Contains(lower, "gnueabihf") || strings.Contains(lower, "armhf") {
-		return "armhf"
-	}
+	// armv7a before armv7 — "armv7a" contains "armv7" as a prefix.
 	if strings.Contains(lower, "armv7a") {
 		return "armv7a"
+	}
+	// Explicit armv7 in filename: takes priority over ABI suffix (gnueabihf).
+	// e.g. "armv7-unknown-linux-gnueabihf" → classifier extracts "armv7".
+	if strings.Contains(lower, "armv7") {
+		return "armv7"
+	}
+	// armv6hf (shellcheck naming): tpm['armv6hf'] = ARMHF → "armhf".
+	if strings.Contains(lower, "armv6hf") {
+		return "armhf"
+	}
+	// Gitea arm-N naming: "linux-arm-5" → patternToTerms → "armv5" → armel.
+	if strings.Contains(lower, "arm-5") {
+		return "armel"
+	}
+	// Gitea arm-N naming: "linux-arm-7" → patternToTerms → "armv7" → armv7.
+	if strings.Contains(lower, "arm-7") {
+		return "armv7"
+	}
+	// Rust gnueabihf triplet (no explicit armvN): classifier → "armhf".
+	if strings.Contains(lower, "gnueabihf") {
+		return "armhf"
+	}
+	// Debian armhf (hard-float ABI): classifier → "armhf".
+	if strings.Contains(lower, "armhf") {
+		return "armhf"
 	}
 	if strings.Contains(lower, "armel") {
 		return "armel"

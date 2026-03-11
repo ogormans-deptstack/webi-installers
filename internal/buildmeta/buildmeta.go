@@ -50,10 +50,12 @@ const (
 	ArchRISCV64 Arch = "riscv64"
 	ArchS390X   Arch = "s390x"
 	ArchLoong64 Arch = "loong64"
-	ArchMIPS64LE Arch = "mips64le"
-	ArchMIPS64   Arch = "mips64"
-	ArchMIPSLE   Arch = "mipsle"
-	ArchMIPS     Arch = "mips"
+	ArchMIPS64LE   Arch = "mips64le"
+	ArchMIPS64     Arch = "mips64"
+	ArchMIPS64R6EL Arch = "mips64r6el"
+	ArchMIPS64R6   Arch = "mips64r6"
+	ArchMIPSLE     Arch = "mipsle"
+	ArchMIPS       Arch = "mips"
 
 	// Universal (fat) binary architectures for macOS.
 	ArchUniversal1 Arch = "universal1" // PPC + x86 (Rosetta 1 era)

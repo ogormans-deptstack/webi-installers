@@ -231,8 +231,9 @@ func TestExportLegacyTranslations(t *testing.T) {
 		}
 	})
 
-	t.Run("x86_64_v2_translated_to_x86_64", func(t *testing.T) {
-		// Micro-arch level suffixes (v2/v3/v4) are not recognized by the classifier.
+	t.Run("x86_64_v2_kept_as_is", func(t *testing.T) {
+		// Micro-arch level suffixes (v2/v3/v4): classifier has tpm entries for
+		// amd64_v2 → x86_64_v2, so the cache must match with the canonical value.
 		pd := storage.PackageData{
 			Assets: []storage.Asset{
 				{Filename: "tool-linux-x86_64_v2.tar.gz", OS: "linux", Arch: "x86_64_v2", Format: ".tar.gz"},
@@ -242,12 +243,13 @@ func TestExportLegacyTranslations(t *testing.T) {
 		if len(lc.Releases) != 1 {
 			t.Fatalf("releases = %d, want 1", len(lc.Releases))
 		}
-		if lc.Releases[0].Arch != "x86_64" {
-			t.Errorf("arch = %q, want x86_64", lc.Releases[0].Arch)
+		if lc.Releases[0].Arch != "x86_64_v2" {
+			t.Errorf("arch = %q, want x86_64_v2 (kept as-is, classifier knows this value)", lc.Releases[0].Arch)
 		}
 	})
 
-	t.Run("mips64r6_translated_to_mips64", func(t *testing.T) {
+	t.Run("mips64r6_kept_as_is", func(t *testing.T) {
+		// mips64r6/mips64r6el: classifier has tpm entries for these exact values.
 		pd := storage.PackageData{
 			Assets: []storage.Asset{
 				{Filename: "tool-linux-mips64r6.tar.gz", OS: "linux", Arch: "mips64r6", Format: ".tar.gz"},
@@ -258,10 +260,43 @@ func TestExportLegacyTranslations(t *testing.T) {
 		if len(lc.Releases) != 2 {
 			t.Fatalf("releases = %d, want 2", len(lc.Releases))
 		}
-		for _, r := range lc.Releases {
-			if r.Arch != "mips64" {
-				t.Errorf("arch = %q, want mips64 (mips64r6* → mips64)", r.Arch)
-			}
+		if lc.Releases[0].Arch != "mips64r6" {
+			t.Errorf("arch = %q, want mips64r6 (kept as-is, classifier knows this value)", lc.Releases[0].Arch)
+		}
+		if lc.Releases[1].Arch != "mips64r6el" {
+			t.Errorf("arch = %q, want mips64r6el (kept as-is, classifier knows this value)", lc.Releases[1].Arch)
+		}
+	})
+
+	t.Run("mipsle_to_mipsel", func(t *testing.T) {
+		// mipsle: Go uses mipsle (GOARCH), Node classifier tpm['mipsle'] = {arch:'mipsel'}.
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "caddy_linux_mipsle.tar.gz", OS: "linux", Arch: "mipsle", Format: ".tar.gz"},
+			},
+		}
+		lc, _ := storage.ExportLegacy("caddy", pd)
+		if len(lc.Releases) != 1 {
+			t.Fatalf("releases = %d, want 1", len(lc.Releases))
+		}
+		if lc.Releases[0].Arch != "mipsel" {
+			t.Errorf("arch = %q, want mipsel (mipsle → mipsel)", lc.Releases[0].Arch)
+		}
+	})
+
+	t.Run("mips64le_to_mips64el", func(t *testing.T) {
+		// mips64le: Go uses mips64le (GOARCH), Node classifier tpm['mips64le'] = {arch:'mips64el'}.
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "gitea-linux-mips64le.tar.gz", OS: "linux", Arch: "mips64le", Format: ".tar.gz"},
+			},
+		}
+		lc, _ := storage.ExportLegacy("gitea", pd)
+		if len(lc.Releases) != 1 {
+			t.Fatalf("releases = %d, want 1", len(lc.Releases))
+		}
+		if lc.Releases[0].Arch != "mips64el" {
+			t.Errorf("arch = %q, want mips64el (mips64le → mips64el)", lc.Releases[0].Arch)
 		}
 	})
 
@@ -423,6 +458,74 @@ func TestExportLegacyTranslations(t *testing.T) {
 		}
 		if lc.Releases[0].Arch != "armv6" {
 			t.Errorf("arch = %q, want armv6 (no translation for armv6l)", lc.Releases[0].Arch)
+		}
+	})
+
+	t.Run("arm_armv7_gnueabihf_to_armv7", func(t *testing.T) {
+		// Files like "ripgrep-14.1.0-armv7-unknown-linux-gnueabihf.tar.gz":
+		// Go classifies as armv7; the "armv7" term in filename takes priority
+		// over the gnueabihf ABI suffix. Classifier sees "armv7" → extracts armv7.
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "ripgrep-14.1.0-armv7-unknown-linux-gnueabihf.tar.gz", OS: "linux", Arch: "armv7", Format: ".tar.gz"},
+			},
+		}
+		lc, _ := storage.ExportLegacy("ripgrep", pd)
+		if len(lc.Releases) != 1 {
+			t.Fatalf("releases = %d, want 1", len(lc.Releases))
+		}
+		if lc.Releases[0].Arch != "armv7" {
+			t.Errorf("arch = %q, want armv7 (armv7 in filename takes priority over gnueabihf)", lc.Releases[0].Arch)
+		}
+	})
+
+	t.Run("arm_armv6hf_to_armhf", func(t *testing.T) {
+		// shellcheck uses "armv6hf" naming; classifier tpm['armv6hf'] = ARMHF → "armhf".
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "shellcheck-v0.9.0.linux.armv6hf.tar.xz", OS: "linux", Arch: "armv6", Format: ".tar.xz"},
+			},
+		}
+		lc, _ := storage.ExportLegacy("shellcheck", pd)
+		if len(lc.Releases) != 1 {
+			t.Fatalf("releases = %d, want 1", len(lc.Releases))
+		}
+		if lc.Releases[0].Arch != "armhf" {
+			t.Errorf("arch = %q, want armhf (armv6hf → armhf)", lc.Releases[0].Arch)
+		}
+	})
+
+	t.Run("arm_gitea_arm5_to_armel", func(t *testing.T) {
+		// Gitea uses "arm-5" naming; patternToTerms converts to "armv5" → tpm → "armel".
+		// Go sees \barm\b → classifies as armv6. Legacy export must correct to armel.
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "gitea-1.20.0-linux-arm-5", OS: "linux", Arch: "armv6", Format: ""},
+			},
+		}
+		lc, _ := storage.ExportLegacy("gitea", pd)
+		if len(lc.Releases) != 1 {
+			t.Fatalf("releases = %d, want 1", len(lc.Releases))
+		}
+		if lc.Releases[0].Arch != "armel" {
+			t.Errorf("arch = %q, want armel (arm-5 → armel)", lc.Releases[0].Arch)
+		}
+	})
+
+	t.Run("arm_gitea_arm7_to_armv7", func(t *testing.T) {
+		// Gitea uses "arm-7" naming; patternToTerms converts to "armv7" → tpm → "armv7".
+		// Go sees \barm\b → classifies as armv6. Legacy export must correct to armv7.
+		pd := storage.PackageData{
+			Assets: []storage.Asset{
+				{Filename: "gitea-1.20.0-linux-arm-7", OS: "linux", Arch: "armv6", Format: ""},
+			},
+		}
+		lc, _ := storage.ExportLegacy("gitea", pd)
+		if len(lc.Releases) != 1 {
+			t.Fatalf("releases = %d, want 1", len(lc.Releases))
+		}
+		if lc.Releases[0].Arch != "armv7" {
+			t.Errorf("arch = %q, want armv7 (arm-7 → armv7)", lc.Releases[0].Arch)
 		}
 	})
 }
