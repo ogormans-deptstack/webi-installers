@@ -19,6 +19,8 @@ const (
 	OSNetBSD    OS = "netbsd"
 	OSDragonFly OS = "dragonfly"
 	OSSunOS     OS = "sunos"
+	OSIllumos   OS = "illumos"
+	OSSolaris   OS = "solaris"
 	OSAIX       OS = "aix"
 	OSAndroid   OS = "android"
 	OSPlan9     OS = "plan9"

@@ -835,6 +835,72 @@ func classifyFlutterDist(d *rawcache.Dir) ([]storage.Asset, error) {
 
 // --- Go (golang.org) ---
 
+// normalizeGoOS maps GOOS values to our canonical OS names.
+// Most match directly. illumos and solaris remain distinct (they have
+// separate builds with different syscall interfaces).
+func normalizeGoOS(goos string) string {
+	switch goos {
+	case "darwin":
+		return "darwin"
+	case "linux":
+		return "linux"
+	case "windows":
+		return "windows"
+	case "freebsd":
+		return "freebsd"
+	case "openbsd":
+		return "openbsd"
+	case "netbsd":
+		return "netbsd"
+	case "dragonfly":
+		return "dragonfly"
+	case "plan9":
+		return "plan9"
+	case "aix":
+		return "aix"
+	case "illumos":
+		return "illumos"
+	case "solaris":
+		return "solaris"
+	default:
+		return goos
+	}
+}
+
+// normalizeGoArch maps GOARCH values to our canonical arch names.
+func normalizeGoArch(goarch string) string {
+	switch goarch {
+	case "amd64":
+		return "x86_64"
+	case "arm64":
+		return "aarch64"
+	case "386":
+		return "x86"
+	case "arm":
+		return "armv6"
+	case "ppc64le":
+		return "ppc64le"
+	case "ppc64":
+		return "ppc64"
+	case "s390x":
+		return "s390x"
+	case "riscv64":
+		return "riscv64"
+	case "loong64":
+		return "loong64"
+	case "mips64le":
+		return "mips64le"
+	case "mips64":
+		return "mips64"
+	case "mipsle":
+		return "mipsle"
+	case "mips":
+		return "mips"
+	default:
+		return goarch
+	}
+}
+
 func classifyGolang(d *rawcache.Dir) ([]storage.Asset, error) {
 	releases, err := ReadAllRaw(d)
 	if err != nil {
@@ -862,7 +928,7 @@ func classifyGolang(d *rawcache.Dir) ([]storage.Asset, error) {
 		}
 
 		for _, f := range rel.Files {
-			if f.Kind == "source" {
+			if f.Kind == "source" || f.OS == "" {
 				continue
 			}
 			// Skip bootstrap and odd builds.
@@ -870,16 +936,18 @@ func classifyGolang(d *rawcache.Dir) ([]storage.Asset, error) {
 				continue
 			}
 
-			r := classify.Filename(f.Filename)
+			// Use Go API's structured os/arch instead of filename parsing.
+			osname := normalizeGoOS(f.OS)
+			arch := normalizeGoArch(f.Arch)
+			format := classify.Filename(f.Filename).Format
 
 			assets = append(assets, storage.Asset{
 				Filename: f.Filename,
 				Version:  version,
 				Channel:  channel,
-				OS:       string(r.OS),
-				Arch:     string(r.Arch),
-				Libc:     string(r.Libc),
-				Format:   string(r.Format),
+				OS:       osname,
+				Arch:     arch,
+				Format:   string(format),
 				Download: "https://dl.google.com/go/" + f.Filename,
 			})
 		}
