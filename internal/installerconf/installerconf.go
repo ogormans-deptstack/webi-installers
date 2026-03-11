@@ -166,11 +166,19 @@ func Read(path string) (*Conf, error) {
 
 	// Collect unrecognized keys.
 	known := map[string]bool{
-		"source": true, "owner": true, "repo": true,
-		"base_url": true, "url": true,
-		"tag_prefix": true, "version_prefix": true, "version_prefixes": true,
-		"exclude": true, "asset_exclude": true, "asset_filter": true,
-		"variants": true, "alias_of": true,
+		"source":            true,
+		"owner":             true,
+		"repo":              true,
+		"base_url":          true,
+		"url":               true,
+		"tag_prefix":        true,
+		"version_prefix":    true,
+		"version_prefixes":  true,
+		"exclude":           true,
+		"asset_exclude":     true,
+		"asset_filter":      true,
+		"variants":          true,
+		"alias_of":          true,
 	}
 	for k, v := range raw {
 		if !known[k] {
