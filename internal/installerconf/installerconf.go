@@ -4,43 +4,45 @@
 // starting with # are ignored. Keys and values are trimmed of whitespace.
 // Multi-value keys are whitespace-delimited.
 //
-// Minimal example (covers ~60% of packages):
+// The source type is inferred from the primary key:
 //
-//	source = github
-//	owner = sharkdp
-//	repo = bat
+// GitHub releases (covers ~70% of packages):
+//
+//	github_repo = sharkdp/bat
 //
 // With version prefix stripping (jq tags are "jq-1.7.1"):
 //
-//	source = github
-//	owner = jqlang
-//	repo = jq
+//	github_repo = jqlang/jq
 //	version_prefixes = jq-
 //
 // With filename exclusions and variant documentation:
 //
-//	source = github
-//	owner = gohugoio
-//	repo = hugo
+//	github_repo = gohugoio/hugo
 //	exclude = _extended_ Linux-64bit
 //	variants = extended extended_withdeploy
 //
 // Monorepo with tag prefix:
 //
-//	source = github
-//	owner = therootcompany
-//	repo = golib
+//	github_repo = therootcompany/golib
 //	tag_prefix = tools/monorel/
 //
-// Non-GitHub sources:
+// Git tag sources (vim plugins, etc.):
+//
+//	git_url = https://github.com/tpope/vim-commentary.git
+//
+// Gitea releases:
+//
+//	gitea_repo = root/pathman
+//	base_url = https://git.rootprojects.org
+//
+// HashiCorp releases:
+//
+//	hashicorp_product = terraform
+//
+// Other sources (one-off scrapers):
 //
 //	source = nodedist
 //	url = https://nodejs.org/download/release
-//
-//	source = gitea
-//	base_url = https://gitea.com
-//	owner = xorm
-//	repo = xorm
 //
 // Complex packages that need custom logic beyond what the classifier
 // auto-detects (e.g. ollama's universal binaries, ffmpeg's non-standard
@@ -133,21 +135,40 @@ func Read(path string) (*Conf, error) {
 	}
 
 	c := &Conf{}
-	c.Source = raw["source"]
-	c.Owner = raw["owner"]
-	c.Repo = raw["repo"]
+
+	// Infer source from primary key, falling back to explicit "source".
+	switch {
+	case raw["github_repo"] != "":
+		c.Source = "github"
+		c.Owner, c.Repo, _ = strings.Cut(raw["github_repo"], "/")
+	case raw["git_url"] != "":
+		c.Source = "gittag"
+		c.BaseURL = raw["git_url"]
+	case raw["gitea_repo"] != "":
+		c.Source = "gitea"
+		c.Owner, c.Repo, _ = strings.Cut(raw["gitea_repo"], "/")
+		c.BaseURL = raw["base_url"]
+	case raw["hashicorp_product"] != "":
+		c.Source = "hashicorp"
+		c.Repo = raw["hashicorp_product"]
+	default:
+		// Legacy / one-off sources: explicit source key.
+		c.Source = raw["source"]
+		c.Owner = raw["owner"]
+		c.Repo = raw["repo"]
+		if v := raw["base_url"]; v != "" {
+			c.BaseURL = v
+		} else {
+			c.BaseURL = raw["url"]
+		}
+	}
+
 	c.TagPrefix = raw["tag_prefix"]
 
 	if v := raw["version_prefixes"]; v != "" {
 		c.VersionPrefixes = strings.Fields(v)
 	} else if v := raw["version_prefix"]; v != "" {
 		c.VersionPrefixes = strings.Fields(v)
-	}
-
-	if v := raw["base_url"]; v != "" {
-		c.BaseURL = v
-	} else {
-		c.BaseURL = raw["url"]
 	}
 
 	// Accept both "exclude" and "asset_exclude" (back-compat).
@@ -166,19 +187,23 @@ func Read(path string) (*Conf, error) {
 
 	// Collect unrecognized keys.
 	known := map[string]bool{
-		"source":            true,
-		"owner":             true,
-		"repo":              true,
-		"base_url":          true,
-		"url":               true,
-		"tag_prefix":        true,
-		"version_prefix":    true,
-		"version_prefixes":  true,
-		"exclude":           true,
-		"asset_exclude":     true,
-		"asset_filter":      true,
-		"variants":          true,
-		"alias_of":          true,
+		"source":             true,
+		"owner":              true,
+		"repo":               true,
+		"github_repo":        true,
+		"git_url":            true,
+		"gitea_repo":         true,
+		"hashicorp_product":  true,
+		"base_url":           true,
+		"url":                true,
+		"tag_prefix":         true,
+		"version_prefix":     true,
+		"version_prefixes":   true,
+		"exclude":            true,
+		"asset_exclude":      true,
+		"asset_filter":       true,
+		"variants":           true,
+		"alias_of":           true,
 	}
 	for k, v := range raw {
 		if !known[k] {

@@ -586,7 +586,7 @@ func fetchGPGDist(ctx context.Context, client *http.Client, rawDir, pkgName stri
 }
 
 func fetchHashiCorp(ctx context.Context, client *http.Client, rawDir, pkgName string, conf *installerconf.Conf) error {
-	product := conf.Extra["product"]
+	product := conf.Repo
 	if product == "" {
 		product = pkgName
 	}
