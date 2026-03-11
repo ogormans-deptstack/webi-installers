@@ -81,6 +81,7 @@ var legacyFormats = map[string]bool{
 	".msi":    true,
 	".exe":    true,
 	".dmg":    true,
+	"git":     true,
 }
 
 // ExportLegacy converts PackageData to the LegacyCache wire format.

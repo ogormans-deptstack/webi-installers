@@ -463,7 +463,7 @@ func classifyPackage(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]s
 	case "nodedist":
 		return classifyNodeDist(pkg, conf, d)
 	case "gittag":
-		return classifyGitTag(pkg, d)
+		return classifyGitTag(pkg, conf, d)
 	case "gitea":
 		return classifyGitea(pkg, conf, d)
 	case "chromedist":
@@ -633,10 +633,10 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 			// Git clone asset — same as gittag source.
 			gitURL := fmt.Sprintf("https://github.com/%s/%s.git", owner, repo)
 			assets = append(assets, storage.Asset{
-				Filename: tag,
+				Filename: repo + "-" + tag,
 				Version:  version,
 				Channel:  channel,
-				Format:   ".git",
+				Format:   "git",
 				Download: gitURL,
 				Date:     date,
 			})
@@ -799,10 +799,19 @@ type gitTagEntry struct {
 	Date       string `json:"Date"`
 }
 
-func classifyGitTag(pkg string, d *rawcache.Dir) ([]storage.Asset, error) {
+func classifyGitTag(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]storage.Asset, error) {
 	releases, err := readAllRaw(d)
 	if err != nil {
 		return nil, err
+	}
+
+	// Derive repo name from the git URL for filenames.
+	// "https://github.com/tpope/vim-commentary.git" → "vim-commentary"
+	gitURL := conf.BaseURL
+	repoName := pkg
+	if gitURL != "" {
+		base := filepath.Base(gitURL)
+		repoName = strings.TrimSuffix(base, ".git")
 	}
 
 	var assets []storage.Asset
@@ -812,17 +821,32 @@ func classifyGitTag(pkg string, d *rawcache.Dir) ([]storage.Asset, error) {
 			continue
 		}
 
+		version := strings.TrimPrefix(entry.Version, "v")
 		date := ""
 		if len(entry.Date) >= 10 {
 			date = entry.Date[:10]
 		}
 
+		var filename string
+		if version != "" {
+			// Tagged release: "{repo}-{tag}" (e.g. "vim-commentary-v1.2")
+			filename = repoName + "-" + entry.GitTag
+		} else if len(entry.Date) >= 19 {
+			// Tagless repo (HEAD of master/main): synthesize a date-based
+			// version like Node.js does: "2023.10.10-18.42.21"
+			version = strings.ReplaceAll(entry.Date[:10], "-", ".") +
+				"-" + strings.ReplaceAll(entry.Date[11:19], ":", ".")
+			filename = repoName + "-v" + version
+		} else {
+			continue
+		}
+
 		assets = append(assets, storage.Asset{
-			Filename: entry.GitTag,
-			Version:  entry.Version,
+			Filename: filename,
+			Version:  version,
 			Channel:  "stable",
-			Format:   ".git",
-			Download: entry.GitTag,
+			Format:   "git",
+			Download: gitURL,
 			Date:     date,
 			Extra:    "commit:" + entry.CommitHash,
 		})
