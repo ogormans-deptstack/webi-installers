@@ -168,10 +168,32 @@ func discover(dir string) ([]pkgConf, error) {
 
 	var packages []pkgConf
 	for _, path := range matches {
-		name := filepath.Base(filepath.Dir(path))
+		pkgDir := filepath.Dir(path)
+		name := filepath.Base(pkgDir)
 		if strings.HasPrefix(name, "_") {
 			continue
 		}
+
+		// If the package directory is a symlink, treat it as an alias
+		// of the symlink target (e.g. rust.vim → vim-rust).
+		fi, err := os.Lstat(filepath.Join(dir, name))
+		if err != nil {
+			log.Printf("warning: %s: %v", name, err)
+			continue
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(filepath.Join(dir, name))
+			if err != nil {
+				log.Printf("warning: readlink %s: %v", name, err)
+				continue
+			}
+			packages = append(packages, pkgConf{
+				name: name,
+				conf: &installerconf.Conf{AliasOf: target},
+			})
+			continue
+		}
+
 		conf, err := installerconf.Read(path)
 		if err != nil {
 			log.Printf("warning: %s: %v", path, err)
