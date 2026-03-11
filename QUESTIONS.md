@@ -10,14 +10,66 @@
 - **Cache output**: The user copies your regenerated cache to my `_cache/2026-03/` directory
 - After fixing + regenerating cache, commit your code AND update ANSWERS.md so I know to re-test
 
-## Current status: DONE
+## Important constraint
 
-All tests passing. Cache-only migration is complete. No further action needed
-from either side.
+**I am not modifying the Node build-classifier.** It's a submodule and production
+behavior is preserved as-is. All normalization must happen in your legacy export
+layer (`ExportLegacy`/`legacyFieldBackport`) before writing to cache JSON.
 
-**Important: I am not adding features to the Node code.** My scope is removing
-the upstream fetchers and reading from `_cache/` instead. The Node build-classifier
-is a submodule and is not being modified. Production behavior is preserved as-is.
+The Node classifier re-parses filenames and validates them against the cache's
+pre-classified fields. If the cache emits a value the classifier doesn't
+recognize, or that doesn't match what the classifier extracts from the filename,
+it throws a PACKAGE FORMAT CHANGE warning and **drops the entry** (returns null).
+
+## 7,606 warnings remaining — need fixes in legacy export
+
+Your legacy export layer needs to filter or translate entries so the Node
+classifier can process them. Entries that cause mismatches get dropped from
+resolution. Here's what needs fixing:
+
+### 1. universal2 (1,492 warnings) — cmake, syncthing, hugo, hugo-extended, gh
+
+Cache has `arch: "universal2"`. Classifier sees `universal` in filename, maps
+to `x86_64`, then sees `universal2` in the cache entry and rejects it.
+
+Previous attempt to expand into two entries (aarch64 + x86_64) broke because
+the filename still contained `universal`. **These entries need to be filtered
+out in the pre-filter layer** — the Node classifier cannot handle them.
+
+### 2. solaris/illumos (2,145 warnings) — go, syncthing, terraform, hugo, caddy, etc.
+
+Cache correctly has `os: "sunos"`. But the download URL still contains `solaris`
+or `illumos`. Classifier re-parses the URL, detects `solaris`, sees `sunos` in
+cache, rejects. **Filter these entries out** — the Node side never served
+solaris/illumos builds anyway.
+
+### 3. ARM variant mismatches (~1,000 warnings) — bat, delta, fd, caddy, dashcore, etc.
+
+| Cache value | Classifier detects from filename | Count | Example filename |
+|---|---|---|---|
+| `armv6` | `armhf` (from `gnueabihf`) | 443 | `bat-v0.9.0-arm-unknown-linux-gnueabihf.tar.gz` |
+| `armv6` | `armel` (from `armel` in filename) | 424 | `caddy_linux_armel.tar.gz` |
+| `armv5` | `armel` (from `armv5` → armel mapping) | 523 | `caddy_linux_armv5.tar.gz` |
+| `armv6` | `armv7` (wrong arch in cache?) | 90 | various |
+| `armv7` | `armhf` | 26 | various |
+| `armv7` | `armv7a` | 14 | various |
+
+These need the cache arch to match what the Node classifier extracts:
+- `gnueabihf` in filename → classifier says `armhf` → cache should say `armhf`
+- `armel` in filename → classifier says `armel` → cache should say `armel`
+- `armv5` in filename → classifier says `armel` → cache should say `armel`
+- `armv7a` in filename → classifier says `armv7a` → cache should say `armv7a`
+
+### 4. android (355 warnings) — sass, lf, fzf, runzip, uuidv7
+
+Cache has `os: "android"`. Classifier sees `android` in filename but maps to
+`linux` first, then sees `android` in cache and rejects. **Filter these out** —
+the Node side doesn't serve android builds.
+
+### 5. Minor (44 warnings)
+
+- `sttr` .pkg (18): upstream bug, `.pkg` mapped to darwin but file is linux. Not fixable.
+- mips/ppc variants (26): `mips64r6`→`mips64`, `mips64r6el`→`mips64`, etc.
 
 ### Test results (latest cache, 15:36)
 
@@ -25,28 +77,9 @@ is a submodule and is not being modified. Production behavior is preserved as-is
 - **49/49** live-compare (5 known — improvements over production)
 - **190/196** broad sweep (6 expected: git/gpg/iterm2/mariadb have no binaries)
 
-### Warnings: 7,606 — all informational, none actionable
-
-I verified every warning category. The cache values are correct in all cases.
-The warnings come from the Node classifier re-parsing filenames and using its
-own naming conventions, which differ from the GOER's normalized values:
-
-| Category | Count | Cache value | Classifier re-detects | Why not fixable |
-|---|---|---|---|---|
-| solaris/illumos vs sunos | 2,145 | `sunos` (correct) | `solaris`/`illumos` from URL | Filename says solaris, cache says sunos — both right |
-| universal vs universal2 | 1,492 | `universal2` (correct) | `x86_64` from `universal` keyword | Classifier doesn't know universal2 |
-| ARM variant naming | ~1,000 | `armv6`/`armv5`/`armv7` | `armhf`/`armel`/`armv7a` | Different naming conventions |
-| android vs linux | 355 | `android` (correct) | `linux` (classifier maps android→linux first) | Classifier quirk |
-| mips/ppc variants | ~26 | various | various | Naming differences |
-| sttr .pkg | 18 | `linux` | `darwin` from `.pkg` ext | Upstream bug |
-
-**Do not try to fix these on the Go side — the cache is already correct.**
-These are pre-existing classifier validation mismatches that don't affect resolution.
-
 ## Previously resolved
 
 - [x] Hugo macOS arm64 — resolves v0.157.0 .pkg
-- [x] universal2 — kept as-is in cache (commit 8debd4e)
 - [x] go armv6l — cache emits `armv6` (commit 9a391ad)
 - [x] solaris/illumos → sunos (commit aec6869)
 - [x] armel → armv6, winx64 → windows (commit aec6869)
