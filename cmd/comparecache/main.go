@@ -556,6 +556,11 @@ func normalizeVersionFunc(pkg string) func(string) string {
 			}
 			return v
 		}
+	case "watchexec":
+		return func(v string) string {
+			// watchexec monorepo: cli-v1.20.5 → v1.20.5
+			return strings.TrimPrefix(v, "cli-")
+		}
 	case "go":
 		return func(v string) string {
 			// Go: go1.10 → 1.10.0 (pad to 3 parts)

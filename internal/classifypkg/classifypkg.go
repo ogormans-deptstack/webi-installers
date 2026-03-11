@@ -231,6 +231,9 @@ func classifyGitHub(pkg string, conf *installerconf.Conf, d *rawcache.Dir) ([]st
 
 		version := rel.TagName
 		if tagPrefix != "" {
+			if !strings.HasPrefix(version, tagPrefix) {
+				continue // skip tags from other packages in monorepos
+			}
 			version = strings.TrimPrefix(version, tagPrefix)
 		}
 
