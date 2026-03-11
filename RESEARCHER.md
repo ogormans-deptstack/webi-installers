@@ -183,12 +183,14 @@ At `/Users/aj/Projects/claude/webinstall.dev/.claude/skills/webi-server/`:
 These packages need special handling in the Go rewrite beyond generic GitHub releases:
 
 **Non-GitHub sources (need custom fetchers):**
+- `node` — custom JSON API (nodejs.org/download/release/index.json) + **unofficial-builds.nodejs.org** (merged); odd major→beta, even→stable; EOL filter (>366 days old excluded); API `files` array has platform strings like `linux-x64-musl`
+- `go` (golang.org/dl/?mode=json&include=all) — strips `go` prefix, pads to 3-part semver; stable/beta only; date always 1970
 - `zig` — custom JSON API at ziglang.org
-- `gpg` — SourceForge RSS feed
-- `mariadb` — custom REST API
+- `gpg` — SourceForge RSS feed (macOS .dmg only; LTS = 2.2.x)
+- `mariadb` — two-stage REST API; `Alpha` maps to `preview` channel (not `alpha`)
 - `macos` — web scraping apple.com
 - `iterm2` — web scraping iterm2.com
-- `pathman` — Gitea instance (git.rootprojects.org)
+- `pathman` — Gitea instance (git.rootprojects.org, uses same githubish.js API)
 
 **Version format overrides (need releases.conf):**
 - `monorel` — strip `tools/monorel/` prefix from monorepo tags
