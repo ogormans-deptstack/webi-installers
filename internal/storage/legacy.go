@@ -1,5 +1,7 @@
 package storage
 
+import "strings"
+
 // Legacy types for reading/writing the Node.js _cache/ JSON format.
 //
 // The Node.js server calls assets "releases" and uses "name" for the
@@ -30,8 +32,11 @@ type LegacyCache struct {
 
 // LegacyDropStats reports how many assets were excluded during ExportLegacy.
 type LegacyDropStats struct {
-	Variants int // dropped: has build variant tags (e.g. rocm, installer, fxdependent)
-	Formats  int // dropped: format not recognized by the Node.js server
+	Variants  int // dropped: has build variant tags (e.g. rocm, installer, fxdependent)
+	Formats   int // dropped: format not recognized by the Node.js server
+	Universal int // dropped: universal2/universal1 arch — classifier maps "universal" in filename to x86_64 and rejects the mismatch
+	SunOS     int // dropped: solaris/illumos OS — Node never served these; classifier mismatches are unfixable
+	Android   int // dropped: android OS — classifier maps android filenames to linux
 }
 
 // ToAsset converts a LegacyAsset to the internal Asset type.
@@ -71,13 +76,23 @@ func (a Asset) toLegacy() LegacyAsset {
 // values the legacy Node.js resolver expects. This is called at export time
 // only — the canonical values are preserved in Go-native storage (pgstore).
 //
+// Global rules (all packages):
+//   - ARM arch: translated from Go canonical to the value the Node build-classifier
+//     extracts from the filename (see legacyARMArchFromFilename).
+//
 // Package-specific rules replicate per-package overrides in production's releases.js:
 //   - ffmpeg: Windows .gz → .exe  (prod releases.js: rel.ext = 'exe')
-//
-// Note: solaris/illumos are kept as-is. The live cache uses them as distinct
-// values (go.json has "illumos" and "solaris" entries). The build-classifier
-// (triplet.js) also keeps all three distinct: illumos, solaris, sunos.
 func legacyFieldBackport(pkg string, a Asset) Asset {
+	// ARM arch: the Node classifier re-parses filenames and expects the cache
+	// arch to match what it extracts. Go normalizes (gnueabihf→armv6, armhf→armv7)
+	// but the Node classifier preserves the original Debian/Rust naming.
+	switch a.Arch {
+	case "armv5", "armv6", "armv7":
+		if leg := legacyARMArchFromFilename(a.Filename); leg != "" {
+			a.Arch = leg
+		}
+	}
+
 	switch pkg {
 	case "ffmpeg":
 		if a.OS == "windows" {
@@ -88,6 +103,32 @@ func legacyFieldBackport(pkg string, a Asset) Asset {
 		}
 	}
 	return a
+}
+
+// legacyARMArchFromFilename returns the arch string the Node build-classifier
+// would extract from a filename for ARM-family builds. Returns "" when the
+// Go canonical arch value already matches what the classifier would extract.
+//
+// The Node classifier's extraction rules differ from Go's normalization:
+//   - gnueabihf (Rust triplet) / armhf (Debian) → "armhf" (not "armv6" or "armv7")
+//   - armel (Debian soft-float ABI) → "armel" (not "armv6")
+//   - armv5 → "armel" (Node tiered map: armv5 falls back to armel)
+//   - armv7a → "armv7a" (not "armv7")
+func legacyARMArchFromFilename(filename string) string {
+	lower := strings.ToLower(filename)
+	if strings.Contains(lower, "gnueabihf") || strings.Contains(lower, "armhf") {
+		return "armhf"
+	}
+	if strings.Contains(lower, "armv7a") {
+		return "armv7a"
+	}
+	if strings.Contains(lower, "armel") {
+		return "armel"
+	}
+	if strings.Contains(lower, "armv5") {
+		return "armel"
+	}
+	return ""
 }
 
 // ImportLegacy converts a LegacyCache to PackageData.
@@ -122,9 +163,12 @@ var legacyFormats = map[string]bool{
 
 // ExportLegacy converts canonical PackageData to the LegacyCache wire format.
 //
-// The pkg name is used to apply per-package field translations before export
-// (see legacyFieldBackport). Assets are excluded when:
+// The pkg name is used to apply per-package field translations (see legacyFieldBackport).
+// Assets are excluded when:
 //   - Variants is non-empty (Node.js has no variant logic)
+//   - Arch is universal2 or universal1 (classifier maps "universal" in filename to x86_64 and rejects the mismatch)
+//   - OS is solaris or illumos (Node never served these; classifier mismatches are unfixable)
+//   - OS is android (classifier maps android filenames to linux)
 //   - Format is non-empty and not in the Node.js recognized set
 //
 // Dropped counts are returned in LegacyDropStats for logging.
@@ -136,6 +180,25 @@ func ExportLegacy(pkg string, pd PackageData) (LegacyCache, LegacyDropStats) {
 		// Skip variant builds — Node.js doesn't have variant logic.
 		if len(a.Variants) > 0 {
 			stats.Variants++
+			continue
+		}
+		// Skip universal fat binaries — classifier maps "universal" in filename
+		// to x86_64 and rejects any cache entry that doesn't say x86_64.
+		if a.Arch == "universal2" || a.Arch == "universal1" {
+			stats.Universal++
+			continue
+		}
+		// Skip solaris/illumos — Node never served these platforms;
+		// the classifier causes mismatches that can't be fixed without
+		// changing the filename.
+		if a.OS == "solaris" || a.OS == "illumos" {
+			stats.SunOS++
+			continue
+		}
+		// Skip android — classifier maps android filenames to linux OS,
+		// which mismatches cache entries tagged android.
+		if a.OS == "android" {
+			stats.Android++
 			continue
 		}
 		// Apply per-package legacy field translations before format check.
