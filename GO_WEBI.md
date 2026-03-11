@@ -303,7 +303,9 @@ Node.js server.
 - [x] Per-package version normalizers (git, lf, go, postgres, watchexec)
 - [x] Gittag HEAD handling (tagless→v{datetime}, mixed→exclude from legacy)
 - [x] Legacy releases (postgres EnterpriseDB 10.x–12.x via appendLegacy)
-- [ ] Resolver (platlatest + installer config + CompatArches → pick binary)
+- [x] Resolver (platlatest + installer config + CompatArches → pick binary)
+- [x] `internal/resolve` — Best() with arch fallback, libc waterfall, format preference
+- [x] `internal/resolver` — high-level Resolve() with triplet enumeration
 - [x] `internal/storage` — interface definition (Asset, PackageData, Store, RefreshTx)
 - [x] `internal/storage/legacy.go` — LegacyAsset/LegacyCache with variant/format filtering
 - [x] `internal/storage/fsstore` — filesystem implementation (atomic writes, alias symlinks)
@@ -316,20 +318,20 @@ Node.js server can read from it. Zero-risk cutover for release fetching.
 
 ### Phase 2: Release API
 
-- [ ] `cmd/webid` — HTTP server skeleton with middleware
-- [ ] `GET /api/releases/{package}.json` endpoint
-- [ ] `GET /api/releases/{package}.tab` endpoint
-- [ ] `GET /api/debug` endpoint
+- [x] `cmd/webid` — HTTP server skeleton with middleware
+- [x] `GET /api/releases/{package}.json` endpoint
+- [x] `GET /api/releases/{package}.tab` endpoint
+- [x] `GET /api/debug` endpoint
 
 **Integration point:** reverse proxy specific `/api/releases/` paths to the Go
 server. Node.js handles everything else.
 
 ### Phase 3: Installer Rendering
 
-- [ ] `internal/render` — template engine
-- [ ] `GET /api/installers/{package}.sh` endpoint
-- [ ] `GET /api/installers/{package}.ps1` endpoint
-- [ ] Bootstrap endpoint (`GET /{package}`)
+- [x] `internal/render` — template engine (Bash + PowerShell)
+- [x] `GET /api/installers/{package}.sh` endpoint
+- [x] `GET /api/installers/{package}.ps1` endpoint
+- [x] Bootstrap endpoint (`GET /{package}`)
 
 **Integration point:** reverse proxy installer paths to Go. Node.js only serves
 the website/cheat sheets (if it ever did — that may be a separate app).
