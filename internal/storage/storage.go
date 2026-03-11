@@ -41,6 +41,9 @@ type PackageData struct {
 
 // Store is the read/write interface for release asset storage.
 type Store interface {
+	// ListPackages returns the names of all packages in the store.
+	ListPackages(ctx context.Context) ([]string, error)
+
 	// Load returns all assets for a package, or nil if the package
 	// is not cached. The returned data may be stale — check UpdatedAt.
 	Load(ctx context.Context, pkg string) (*PackageData, error)

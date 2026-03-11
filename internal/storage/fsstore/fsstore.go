@@ -49,6 +49,25 @@ func monthDir(now time.Time) string {
 	return now.Format("2006-01")
 }
 
+// ListPackages returns the names of all packages in the current month's cache.
+func (s *Store) ListPackages(_ context.Context) ([]string, error) {
+	dir := filepath.Join(s.root, monthDir(time.Now()))
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fsstore: list packages: %w", err)
+	}
+	var pkgs []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".json") {
+			pkgs = append(pkgs, strings.TrimSuffix(e.Name(), ".json"))
+		}
+	}
+	return pkgs, nil
+}
+
 // Load reads a package's cached assets from disk.
 // Returns nil (not an error) if the package is not cached.
 func (s *Store) Load(_ context.Context, pkg string) (*storage.PackageData, error) {

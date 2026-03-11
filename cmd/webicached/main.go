@@ -47,13 +47,15 @@ import (
 	"github.com/webinstall/webi-installers/internal/releases/mariadbdist"
 	"github.com/webinstall/webi-installers/internal/releases/nodedist"
 	"github.com/webinstall/webi-installers/internal/releases/zigdist"
+	"github.com/webinstall/webi-installers/internal/storage"
 	"github.com/webinstall/webi-installers/internal/storage/fsstore"
+	"github.com/webinstall/webi-installers/internal/storage/pgstore"
 )
 
 // WebiCache holds the configuration for the cache daemon.
 type WebiCache struct {
 	ConfDir   string          // root directory with {pkg}/releases.conf files
-	Store     *fsstore.Store  // classified asset storage
+	Store     storage.Store   // classified asset storage (fsstore or pgstore)
 	RawDir    string          // raw upstream response cache
 	Client    *http.Client    // HTTP client for upstream calls
 	Auth      *githubish.Auth // GitHub API auth (optional)
@@ -82,6 +84,7 @@ func (t *delayTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func main() {
 	confDir := flag.String("conf", ".", "root directory containing {pkg}/releases.conf files")
 	cacheDir := flag.String("cache", "_cache", "output cache directory (fsstore root)")
+	pgDSN := flag.String("pg", "", "PostgreSQL DSN (enables pgstore; mutually exclusive with -cache)")
 	rawDir := flag.String("raw", "_cache/raw", "raw cache directory for upstream responses")
 	token := flag.String("token", os.Getenv("GITHUB_TOKEN"), "GitHub API token")
 	once := flag.Bool("once", false, "run once then exit (no periodic refresh)")
@@ -92,9 +95,19 @@ func main() {
 	pageDelay := flag.Duration("page-delay", 2*time.Second, "delay between paginated API requests")
 	flag.Parse()
 
-	store, err := fsstore.New(*cacheDir)
-	if err != nil {
-		log.Fatalf("fsstore: %v", err)
+	var store storage.Store
+	if *pgDSN != "" {
+		pg, err := pgstore.New(context.Background(), *pgDSN)
+		if err != nil {
+			log.Fatalf("pgstore: %v", err)
+		}
+		store = pg
+	} else {
+		fs, err := fsstore.New(*cacheDir)
+		if err != nil {
+			log.Fatalf("fsstore: %v", err)
+		}
+		store = fs
 	}
 
 	var auth *githubish.Auth

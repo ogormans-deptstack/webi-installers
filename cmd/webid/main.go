@@ -34,18 +34,30 @@ import (
 	"github.com/webinstall/webi-installers/internal/resolver"
 	"github.com/webinstall/webi-installers/internal/storage"
 	"github.com/webinstall/webi-installers/internal/storage/fsstore"
+	"github.com/webinstall/webi-installers/internal/storage/pgstore"
 	"github.com/webinstall/webi-installers/internal/uadetect"
 )
 
 func main() {
 	addr := flag.String("addr", ":3001", "listen address")
 	cacheDir := flag.String("cache", "./_cache", "cache directory root")
+	pgDSN := flag.String("pg", "", "PostgreSQL DSN (enables pgstore; mutually exclusive with -cache)")
 	installersDir := flag.String("installers", ".", "installers repo root (for install.sh/ps1)")
 	flag.Parse()
 
-	store, err := fsstore.New(*cacheDir)
-	if err != nil {
-		log.Fatalf("fsstore: %v", err)
+	var store storage.Store
+	if *pgDSN != "" {
+		pg, err := pgstore.New(context.Background(), *pgDSN)
+		if err != nil {
+			log.Fatalf("pgstore: %v", err)
+		}
+		store = pg
+	} else {
+		fs, err := fsstore.New(*cacheDir)
+		if err != nil {
+			log.Fatalf("fsstore: %v", err)
+		}
+		store = fs
 	}
 
 	srv := &server{
@@ -111,7 +123,7 @@ func main() {
 
 // server holds the shared state for all HTTP handlers.
 type server struct {
-	store         *fsstore.Store
+	store         storage.Store
 	installersDir string
 
 	mu        sync.RWMutex
@@ -126,24 +138,19 @@ type packageCache struct {
 	catalog resolve.Catalog
 }
 
-// loadAll pre-loads all packages from the cache directory.
+// loadAll pre-loads all packages from the store.
 func (s *server) loadAll() {
-	monthDir := time.Now().Format("2006-01")
-	dir := filepath.Join(s.store.Root(), monthDir)
+	ctx := context.Background()
 
-	entries, err := os.ReadDir(dir)
+	pkgs, err := s.store.ListPackages(ctx)
 	if err != nil {
-		log.Printf("warn: no cache dir %s: %v", dir, err)
+		log.Printf("warn: list packages: %v", err)
 		return
 	}
 
 	count := 0
-	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		pkg := strings.TrimSuffix(e.Name(), ".json")
-		pd, err := s.store.Load(context.Background(), pkg)
+	for _, pkg := range pkgs {
+		pd, err := s.store.Load(ctx, pkg)
 		if err != nil {
 			log.Printf("warn: load %s: %v", pkg, err)
 			continue
@@ -163,7 +170,7 @@ func (s *server) loadAll() {
 		s.mu.Unlock()
 		count++
 	}
-	log.Printf("loaded %d packages from cache", count)
+	log.Printf("loaded %d packages from store", count)
 }
 
 // getPackage returns the cached package data, or nil if not found.
