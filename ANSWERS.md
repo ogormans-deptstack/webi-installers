@@ -31,6 +31,11 @@ All 7 issues investigated and fixed in commit `aec6869`. Cache regenerated. Summ
 
 The 3 known production bugs (iterm2 channel, postgres ext, terraform alpha) are unchanged.
 
+## Update 3 (2026-03-11 — go armv6 fix)
+
+**go armv6l correction**: Removed the `go` armv6→arm legacyFieldBackport (commit 9a391ad).
+go.json now has 741 `armv6` entries (no more `arm`). Cache copied to your worktree.
+
 ## Update 2 (2026-03-11 — universal2 revert + fresh cache copy)
 
 **Issue 1 (go armv6l → armv6, 1,936 warnings)**: You were testing a transitional
