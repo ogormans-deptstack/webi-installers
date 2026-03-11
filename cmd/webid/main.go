@@ -26,7 +26,9 @@ import (
 	"time"
 
 	"github.com/webinstall/webi-installers/internal/buildmeta"
+	"github.com/webinstall/webi-installers/internal/render"
 	"github.com/webinstall/webi-installers/internal/resolve"
+	"github.com/webinstall/webi-installers/internal/resolver"
 	"github.com/webinstall/webi-installers/internal/storage"
 	"github.com/webinstall/webi-installers/internal/storage/fsstore"
 	"github.com/webinstall/webi-installers/internal/uadetect"
@@ -65,6 +67,10 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
 	})
+
+	// Bootstrap route: /{package} and /{package}@{version}
+	// Detects UA and returns rendered installer script.
+	mux.HandleFunc("GET /{pkgSpec}", srv.handleBootstrap)
 
 	httpSrv := &http.Server{
 		Addr:         *addr,
@@ -508,4 +514,169 @@ func (s *server) handleDebug(w http.ResponseWriter, r *http.Request) {
 		"arch":       string(result.Arch),
 		"libc":       string(result.Libc),
 	})
+}
+
+// handleBootstrap serves /{package} and /{package}@{version}.
+// Detects the client's OS/arch from User-Agent, resolves the best
+// release, and renders the installer script.
+func (s *server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
+	pkgSpec := r.PathValue("pkgSpec")
+
+	// Parse package@version.
+	pkg, tag := pkgSpec, ""
+	if idx := strings.IndexByte(pkgSpec, '@'); idx >= 0 {
+		pkg = pkgSpec[:idx]
+		tag = pkgSpec[idx+1:]
+	}
+
+	if pkg == "" {
+		http.Error(w, "package name required", http.StatusBadRequest)
+		return
+	}
+
+	// Detect platform from User-Agent.
+	ua := uadetect.FromRequest(r)
+	if ua.OS == "" {
+		http.Error(w, "could not detect OS from User-Agent", http.StatusBadRequest)
+		return
+	}
+
+	// Check for selfhosted package first.
+	isSelfHosted := s.isSelfHosted(pkg)
+	pc := s.getPackage(pkg)
+
+	if pc == nil && !isSelfHosted {
+		http.Error(w, fmt.Sprintf("package %q not found", pkg), http.StatusNotFound)
+		return
+	}
+
+	// Build render params.
+	baseURL := "https://" + r.Host
+	if r.TLS == nil && !strings.Contains(r.Host, "webinstall") {
+		baseURL = "http://" + r.Host
+	}
+
+	p := render.Params{
+		Host:    baseURL,
+		PkgName: pkg,
+		Tag:     tag,
+		OS:      string(ua.OS),
+		Arch:    string(ua.Arch),
+		Libc:    string(ua.Libc),
+	}
+
+	// Resolve the best release (if not selfhosted).
+	if pc != nil {
+		req := resolver.Request{
+			OS:   string(ua.OS),
+			Arch: string(ua.Arch),
+			Libc: string(ua.Libc),
+		}
+
+		// Handle channel selectors in tag.
+		switch strings.ToLower(tag) {
+		case "stable", "latest", "":
+			// Default.
+		case "lts":
+			req.LTS = true
+		case "beta", "pre", "preview":
+			req.Channel = "beta"
+		case "rc":
+			req.Channel = "rc"
+		case "alpha", "dev":
+			req.Channel = "alpha"
+		default:
+			req.Version = tag
+		}
+
+		res, err := resolver.Resolve(pc.assets, req)
+		if err != nil {
+			// Build error CSV like Node.js does.
+			p.Version = "0.0.0"
+			p.Channel = "error"
+			p.Ext = "err"
+			p.PkgURL = "https://example.com/doesntexist.ext"
+			p.PkgFile = "doesntexist.ext"
+			p.CSV = buildCSV(p)
+		} else {
+			v := strings.TrimPrefix(res.Version, "v")
+			parts := splitVersion(v)
+			p.Version = v
+			p.Major = parts[0]
+			p.Minor = parts[1]
+			p.Patch = parts[2]
+			p.Build = parts[3]
+			p.GitTag = "v" + v
+			p.GitBranch = "v" + v
+			p.LTS = fmt.Sprintf("%v", res.Asset.LTS)
+			p.Channel = res.Asset.Channel
+			if p.Channel == "" {
+				p.Channel = "stable"
+			}
+			p.Ext = strings.TrimPrefix(res.Asset.Format, ".")
+			p.PkgURL = res.Asset.Download
+			p.PkgFile = res.Asset.Filename
+			p.CSV = buildCSV(p)
+		}
+
+		// Add catalog info.
+		p.PkgStable = pc.catalog.Stable
+		p.PkgLatest = pc.catalog.Latest
+		p.PkgOSes = strings.Join(pc.catalog.OSes, " ")
+		p.PkgArches = strings.Join(pc.catalog.Arches, " ")
+		p.PkgLibcs = strings.Join(pc.catalog.Libcs, " ")
+		p.PkgFormats = strings.Join(pc.catalog.Formats, " ")
+	}
+
+	// Build releases URL.
+	p.ReleasesURL = fmt.Sprintf("%s/api/releases/%s@%s.tab?os=%s&arch=%s&libc=%s&formats=tar&pretty=true",
+		baseURL, pkg, tag, p.OS, p.Arch, p.Libc)
+
+	// Render the installer script.
+	tplPath := filepath.Join(s.installersDir, "_webi", "package-install.tpl.sh")
+	script, err := render.Bash(tplPath, s.installersDir, pkg, p)
+	if err != nil {
+		log.Printf("render %s: %v", pkg, err)
+		http.Error(w, fmt.Sprintf("failed to render installer for %q: %v", pkg, err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprint(w, script)
+}
+
+// buildCSV creates the WEBI_CSV line in the Node.js format.
+func buildCSV(p render.Params) string {
+	return strings.Join([]string{
+		p.Version,
+		p.LTS,
+		p.Channel,
+		"", // date
+		p.OS,
+		p.Arch,
+		p.Ext,
+		"-",
+		p.PkgURL,
+		p.PkgFile,
+		"",
+	}, ",")
+}
+
+// splitVersion splits a version string into [major, minor, patch, build].
+func splitVersion(v string) [4]string {
+	// Strip pre-release suffix for splitting.
+	base := v
+	build := ""
+	if idx := strings.IndexByte(v, '-'); idx >= 0 {
+		base = v[:idx]
+		build = v[idx+1:]
+	}
+
+	parts := strings.SplitN(base, ".", 4)
+	var result [4]string
+	for i := 0; i < len(parts) && i < 3; i++ {
+		result[i] = parts[i]
+	}
+	result[3] = build
+	return result
 }
