@@ -214,7 +214,7 @@ func IsMetaAsset(name string) bool {
 		".txt",
 		".sha256", ".sha256sum", ".sha512", ".sha512sum",
 		".md5", ".md5sum", ".sig", ".asc", ".pem",
-		".sbom", ".spdx", ".json.sig", ".sigstore",
+		".sbom", ".spdx", ".json.sig", ".sigstore", ".minisig",
 		"_src.tar.gz", "_src.tar.xz", "_src.zip",
 		"-src.tar.gz", "-src.tar.xz", "-src.zip",
 		".d.ts", ".pub",
@@ -234,6 +234,7 @@ func IsMetaAsset(name string) bool {
 	}
 	for _, exact := range []string{
 		"install.sh", "install.ps1", "compat.json",
+		"b3sums", "dist-manifest.json",
 	} {
 		if lower == exact {
 			return true
