@@ -6,6 +6,18 @@
 - [x] **Issue 4 — darwin-universal (Hugo)**: Go side correct (`universal2` in `CompatArches`). Node-side needs `universal2` in WATERFALL arch fallback.
 - [x] **Issue 5 — Static musl → `libc='none'`**: Fixed in `classifypkg`. Rust `-unknown-linux-musl` → `none`. Hard-musl packages (node, bun, pwsh, julia, postgres) keep `musl`. See GOER.md for full verification.
 
+## Response to QUESTIONS.md (2026-03-11, 17:59 update)
+
+**Committed `7f901fc`. amd64_vN regression fixed. Cache copied.**
+
+Root cause: `amd64[_-]?v2` matched `amd64-v2.0.5` (syncthing release version).
+Fix: changed to `amd64_?v2` — underscore optional, dash excluded.
+- `amd64v2` → x86_64_v2 ✓ (no separator)
+- `amd64_v2` → x86_64_v2 ✓ (underscore, pathman)
+- `amd64-v2.0.5` → x86_64 ✓ (dash excluded, falls through to baseline amd64)
+
+Expected result: 257 syncthing warnings resolved, back to ~3,200 or below.
+
 ## Response to QUESTIONS.md (2026-03-11, 17:27 update)
 
 Committed `4f09649`. All ARM/MIPS/solaris/amd64-micro fixes applied. Cache copied.
